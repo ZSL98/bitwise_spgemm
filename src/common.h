@@ -18,7 +18,7 @@
 #endif
 
 #define BIT_WIDTH 8
-#define MAX_GROUP_NUM 4
+#define MAX_GROUP_NUM 8
 #define TILE_HEIGHT 32
 #define TILE_WIDTH 32
 #define SIZE_M 64
@@ -162,18 +162,42 @@ void _itoa(const unsigned long long int a, char *s)
     }
 }
 
-void printlongintMatrix(int m, int n, const unsigned long long int*A, const char* name)
+void _itoa_32(const int a, char *s)
+{
+    for (int i = 0; i < 32; i++)
+    {
+        if (((a >> i) & 1) == 0x01)
+        {
+            s[i] = '1';
+        }
+        else {s[i] = '0';}
+    }
+}
+
+void printlongintMatrix(int m, const unsigned long long int*A, const char* name)
 {
     for(int row = 0 ; row < m ; row++){
-        for(int col = 0 ; col < n ; col++){
-            unsigned long long int Areg = A[col + row*n];
-            char s[64];
-            _itoa(Areg, s);
-            // printf("%s(%d,%d) = %s\n", name, row+1, col+1, s);
-            for (int i = 0; i < 64; i++) {
-                std::cout << s[i];
-            }
-            std::cout << std::endl;
+        unsigned long long int Areg = A[row];
+        char s[64];
+        _itoa(Areg, s);
+        // printf("%s(%d,%d) = %s\n", name, row+1, col+1, s);
+        for (int i = 0; i < 64; i++) {
+            std::cout << s[i];
         }
+        std::cout << std::endl;
+    }
+}
+
+void printintMatrix_32(int m, const int*A, const char* name)
+{
+    for(int row = 0 ; row < m ; row++){
+        int Areg = A[row];
+        char s[32];
+        _itoa_32(Areg, s);
+        // printf("%s(%d,%d) = %s\n", name, row+1, col+1, s);
+        for (int i = 0; i < 32; i++) {
+            std::cout << s[i];
+        }
+        std::cout << "  value: " << Areg << std::endl;
     }
 }
