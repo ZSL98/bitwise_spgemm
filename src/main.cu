@@ -12,9 +12,9 @@
 //     d_group_mask[3] = 1;
 // }
 
-__device__ float* dB_tile_spilled_csrVal[2];
-__device__ int* dB_tile_spilled_csrColInd[2];
-__device__ int* dB_tile_spilled_csrRowPtr[2];
+// __device__ float* dB_tile_spilled_csrVal[2];
+// __device__ int* dB_tile_spilled_csrColInd[2];
+// __device__ int* dB_tile_spilled_csrRowPtr[2];
 
 
 template <typename int32_or_64>
@@ -122,12 +122,6 @@ __global__ void generate_groups(int32_or_64 *MatB_bit,
     if (threadIdx.x == 0)
     {
 
-        // for (int i = 0; i < spilled_nnz[bid]; i++)
-        // {
-        //     dB_tile_spilled_csrColInd[bid][i] = 0;
-        //     dB_tile_spilled_csrVal[bid][i] = 0;
-        // }
-
         int nz_ind;
         int spilled_row;
 
@@ -137,65 +131,11 @@ __global__ void generate_groups(int32_or_64 *MatB_bit,
             spilled_row_hash_table_reverse_smem[spilled_row] = i;
         }
 
-        dB_tile_spilled_csrVal[bid] = (float*)malloc(spilled_nnz[bid]);
-        dB_tile_spilled_csrColInd[bid] = (int*)malloc(spilled_nnz[bid]);
-        dB_tile_spilled_csrRowPtr[bid] = (int*)malloc(spilled_row_cnt[bid]+1);
-
-        // nz_ind = 0;
-        // for (int i = 0; i < spilled_row_cnt[bid]; i++)
-        // {
-        //     spilled_row = spilled_row_hash_table_smem[i];
-        //     spilled_row_hash_table_reverse_smem[spilled_row] = i;
-        //     for (int j = 0; j < TILE_WIDTH; j++)
-        //     {
-        //         if (d_dense_smem[spilled_row][j] >= 1.0f)
-        //         {
-        //             // dB_tile_spilled_csrColInd[bid][nz_ind] = j;
-        //             dB_tile_spilled_csrVal[bid][nz_ind] = d_dense_smem[spilled_row][j];
-        //             // printf("bid: %d, d_dense_smem: %f\n", bid, d_dense_smem[spilled_row][j]);
-        //             // dB_tile_spilled_csrVal[bid][nz_ind] = j;
-        //             nz_ind++;
-        //         }
-        //     }
-        // }
-
-        // dB_tile_spilled_csrRowPtr[bid] = (int*)malloc(spilled_row_cnt[bid]+1);
-        // dB_tile_spilled_csrRowPtr[bid][0] = 0;
-        // nz_ind = 0;
-        // for (int i = 0; i < spilled_row_cnt[bid]; i++)
-        // {
-        //     spilled_row = spilled_row_hash_table_smem[i];
-        //     for (int j = 0; j < TILE_WIDTH; j++)
-        //     {
-        //         if (d_dense_smem[spilled_row][j] >= 1.0f)
-        //         {
-        //             nz_ind++;
-        //         }
-        //     }
-        //     dB_tile_spilled_csrRowPtr[bid][i+1] = nz_ind;
-        // }      
-
+        // dB_tile_spilled_csrVal[bid] = (float*)malloc(spilled_nnz[bid]);
         // dB_tile_spilled_csrColInd[bid] = (int*)malloc(spilled_nnz[bid]);
-        // nz_ind = 0;
-        // for (int i = 0; i < spilled_row_cnt[bid]; i++)
-        // {
-        //     spilled_row = spilled_row_hash_table_smem[i];
-        //     for (int j = 0; j < TILE_WIDTH; j++)
-        //     {
-        //         if (d_dense_smem[spilled_row][j] >= 1.0f)
-        //         {
-        //             dB_tile_spilled_csrColInd[bid][nz_ind] = j;
-        //             nz_ind++;
-        //         }
-        //     }
-        // }
+        // dB_tile_spilled_csrRowPtr[bid] = (int*)malloc(spilled_row_cnt[bid]+1);
 
         printf("bid: %d, nnz: %d\n", bid, spilled_nnz[bid]);
-
-        // for (int i = 0; i < spilled_nnz[bid]; i++)
-        // {
-        //     printf("bid: %d, i: %d, csrColInd2: %f \n", bid, i, dB_tile_spilled_csrVal[bid][i]);
-        // }
 
         // load the group information into global memory
         for (int i = 0; i < MAX_GROUP_NUM; i++)
@@ -222,7 +162,7 @@ __global__ void generate_groups(int32_or_64 *MatB_bit,
 
 
 template <typename int32_or_64>
-__global__ void generate_groups_step2(int32_or_64 *MatB_bit,
+__global__ void generate_spilled_csr(int32_or_64 *MatB_bit,
                                 int32_or_64 *d_group_mask,
                                 int *d_group_ele_row_ind,
                                 float *d_group_ele_row_val,
@@ -230,9 +170,11 @@ __global__ void generate_groups_step2(int32_or_64 *MatB_bit,
                                 int *group_id,
                                 int *spilled_row_cnt,
                                 int *spilled_nnz,
-                                // float **tile_spilled_csrVal,
-                                // int **tile_spilled_csrColInd,
-                                // int **tile_spilled_csrRowPtr,
+                                int *spilled_row_cnt_offset,
+                                int *spilled_nnz_offset,
+                                float *tile_spilled_csrVal,
+                                int *tile_spilled_csrColInd,
+                                int *tile_spilled_csrRowPtr,
                                 int *spilled_row_hash_table_gmem,
                                 int *spilled_row_hash_table_reverse_gmem
                                 )
@@ -254,10 +196,11 @@ __global__ void generate_groups_step2(int32_or_64 *MatB_bit,
     
     if (threadIdx.x == 0)
     {
-        int nz_ind = 0;
+        int nz_ind_total = 0;
+        int row_ind_total = 0;
         int spilled_row;
 
-        dB_tile_spilled_csrRowPtr[bid][0] = 0;
+        // tile_spilled_csrRowPtr[0] = 0;
         for (int i = 0; i < spilled_row_cnt[bid]; i++)
         {
             spilled_row = spilled_row_hash_table_smem[i];
@@ -265,14 +208,23 @@ __global__ void generate_groups_step2(int32_or_64 *MatB_bit,
             {
                 if (d_dense_smem[spilled_row][j] != 0.0f)
                 {
-                    dB_tile_spilled_csrColInd[bid][nz_ind] = j;
-                    dB_tile_spilled_csrVal[bid][nz_ind] = d_dense_smem[spilled_row][j];
-                    nz_ind++;
+                    tile_spilled_csrColInd[spilled_nnz_offset[bid] + nz_ind_total] = j;
+                    tile_spilled_csrVal[spilled_nnz_offset[bid] + nz_ind_total] = d_dense_smem[spilled_row][j];
+                    nz_ind_total++;
                 }
             }
-            dB_tile_spilled_csrRowPtr[bid][i+1] = nz_ind;
-        }     
+            tile_spilled_csrRowPtr[spilled_row_cnt_offset[bid] + row_ind_total] = nz_ind_total;
+            row_ind_total++;
+        }
     }
+
+    // if (threadIdx.x == 0)
+    // {
+    //     for (int i = 0; i < spilled_nnz[bid]; i++)
+    //     {
+    //         printf("bid: %d, tile_spilled_csrColInd: %f\n", bid, tile_spilled_csrVal[spilled_nnz_offset[bid] + nz_ind_total]);
+    //     }
+    // }
 }
 
 // __device__ void ld_groups_to_regs(int *d_group_ele_row_idx, 
@@ -315,23 +267,17 @@ __global__ void bit_wise_spgemm(int split_k,
                                 int *group_id_gmem,                         // MatrixB's group ID
                                 int *spilled_row_cnt,
                                 int *spilled_nnz,
-                                // float **tile_spilled_csrVal,
-                                // int **tile_spilled_csrColInd,
-                                // int **tile_spilled_csrRowPtr,
-                                int *spilled_row_hash_table_reverse_gmem
+                                int *spilled_row_cnt_offset,
+                                int *spilled_nnz_offset,
+                                float *tile_spilled_csrVal,
+                                int *tile_spilled_csrColInd,
+                                int *tile_spilled_csrRowPtr,
+                                int *spilled_row_hash_table_reverse_gmem,
+                                float *final_result_gmem
                                 )
 {
     int bid = blockIdx.y * gridDim.x + blockIdx.x;
     int tid = bid * blockDim.x + threadIdx.x;
-
-    if (threadIdx.x == 0)
-    {
-        for (int i = 0; i < spilled_nnz[bid]; i++)
-        {
-            printf("bid: %d, i: %d, csrColInd2: %d \n", bid, i, dB_tile_spilled_csrColInd[bid][i]);
-        }
-    }
-
     int assigned_row_ind = blockIdx.y * blockDim.x + threadIdx.x;
     // int assigned_col_ind = blockIdx.x * split_k;
     // int assigned_bit_pos = threadIdx.x % BIT_WIDTH;
@@ -383,7 +329,9 @@ __global__ void bit_wise_spgemm(int split_k,
                 {
                     int tmp = __float_as_int(d_csr_values[i]);
                     int mv_bit = b+16;
-                    if((tmp >> mv_bit) & 1 == 0x01)
+                    // if((tmp >> mv_bit) & 1 == 0x01)
+                    // test
+                    if ((b%2+row_ind_in_tile%2)%2 == 0)
                     {
                         row_group_id = group_id_smem[row_ind_in_tile];
                         // printf("bid: %d, threadIdx.x: %d, b: %d, row_group_id: %d \n", bid, threadIdx.x, b, row_group_id);
@@ -401,12 +349,20 @@ __global__ void bit_wise_spgemm(int split_k,
                             int row_in_csr = spilled_row_hash_table_reverse_smem[row_ind_in_tile];
                             // printf("tileB_id: %d, row_ind_in_tile: %d, row_in_csr: %d, Ptr: %d, Ptr2: %d \n", 
                             // tileB_id, row_ind_in_tile, row_in_csr, dB_tile_spilled_csrRowPtr[tileB_id][row_in_csr], dB_tile_spilled_csrRowPtr[tileB_id][row_in_csr+1]);
-                            for (int j = dB_tile_spilled_csrRowPtr[tileB_id][row_in_csr]; 
-                                    j < dB_tile_spilled_csrRowPtr[tileB_id][row_in_csr+1]; j++)
+                            int start_offset;
+                            if (row_in_csr == 0)
                             {
-                                col_ind = dB_tile_spilled_csrColInd[tileB_id][j];
+                                start_offset = 0;
+                            }
+                            else 
+                            {
+                                start_offset = tile_spilled_csrRowPtr[spilled_row_cnt_offset[tileB_id] + row_in_csr - 1];
+                            }
+                            for (int j = start_offset; j < tile_spilled_csrRowPtr[spilled_row_cnt_offset[tileB_id] + row_in_csr]; j++)
+                            {
+                                col_ind = tile_spilled_csrColInd[spilled_nnz_offset[tileB_id] + j];
                                 // printf("col_ind: %d \n", col_ind);
-                                // result[threadIdx.x][b][col_ind] += dB_tile_spilled_csrVal[tileB_id][col_ind];
+                                result[threadIdx.x][b][col_ind] += tile_spilled_csrVal[spilled_nnz_offset[tileB_id] + j];
                             }
                         }
                     }
@@ -441,16 +397,25 @@ __global__ void bit_wise_spgemm(int split_k,
                 for (int j = 0; j < MAX_GROUP_NUM; j++) 
                 {
                     // register_idx = atomicAnd(&register_idx, (group_indicator[i][b][j] << threadIdx.x)); // this is one bit
-                    
-                    // if (group_indicator[i][b][j] == 1)
-                    // {
-                    //     register_idx = group_indicator[i][b][j] << threadIdx.x;
-                    //     result[i][b][threadIdx.x] += group[register_idx];
-                    // }
+                    register_idx = (group_indicator[i][b][j] >> threadIdx.x) & 1;
+                    if (register_idx == 1)
+                    {
+                        result[i][b][threadIdx.x] += group[1 << j];
+                    }
                 }
                 // result[i][b][tid] = group[register_idx];
             }
 
+        }
+    }
+
+    //compute with cuda kernel
+    for (int i = 0; i < blockDim.x; i++) 
+    {
+        for (int b = 0; b < BIT_WIDTH; b++)
+        {
+            int ind = (blockIdx.y * blockDim.x + i) * SIZE_N + blockIdx.x * TILE_WIDTH + threadIdx.x;
+            final_result_gmem[ind] += result[i][b][threadIdx.x] * float(b);
         }
     }
 
@@ -557,7 +522,7 @@ int main()
     // using CSRHost = cusp::csr_matrix<IndexType,ValueType,cusp::host_memory>;
     // using CSRDev = cusp::csr_matrix<IndexType,ValueType,cusp::device_memory>;
 
-    cudaDeviceSetLimit(cudaLimitMallocHeapSize, 1024*1024*1024);
+    // cudaDeviceSetLimit(cudaLimitMallocHeapSize, 1024*1024*1024);
     dim3 grid1(2, 1, 1), block1(SPLIT_K, 1, 1);
     // dim3 grid1(SIZE_K/SPLIT_K, SIZE_N/TILE_WIDTH, 1), block1(SPLIT_K, 1, 1);
     dim3 grid2(SIZE_K/TILE_HEIGHT, SIZE_N/TILE_WIDTH, 1), block2(TILE_HEIGHT, 1, 1);
@@ -565,6 +530,8 @@ int main()
     const int m = SIZE_M;
     const int k = SIZE_K;
 	const int n = SIZE_N;
+
+    int tileB_cnt = k * n / SPLIT_K / TILE_WIDTH;
 
     int sparsity = 90;
 	float* hA_dense = (float*)malloc(sizeof(float)*m*k);
@@ -574,38 +541,41 @@ int main()
     fill_random(hB_dense, k, n, sparsity);
     fill_random(hC_dense, m, n, sparsity);
 
-    float *dA_dense, *dA_csr_values, *dB_dense, *dB_group_ele_val;
-    int   *dA_csr_offsets, *dA_csr_columns, *dB_group_id, *dB_spilled_row_cnt, *dB_spilled_nnz, *dB_spilled_row_hash_table_gmem, *dB_spilled_row_hash_table_reverse_gmem;
+    // basic ptrs
+    float *dA_dense, *dA_csr_values;
+    float *dB_dense, *dB_csr_values;
+    int   *dA_csr_offsets, *dA_csr_columns;
+    int   *dB_csr_offsets, *dB_csr_columns;
+    int   *dC_csrOffsets, *dC_columns;
+    float *dC_values;
 
+    // advanced ptrs
+    float *dB_group_ele_val;
+    int *dB_group_id, *dB_spilled_row_cnt, *dB_spilled_nnz;
+    int *dB_spilled_row_hash_table_gmem, *dB_spilled_row_hash_table_reverse_gmem;
     int *dB_group_ele_ind;
-    // float **dB_tile_spilled_csrVal;
-    // int **dB_tile_spilled_csrColInd, **dB_tile_spilled_csrRowPtr;
-
-    // unsigned long long int *dB_bitmask, *dB_groupmask;
-    // CHECK_CUDA( cudaMalloc((void**) &dB_bitmask,        k * n / TILE_WIDTH * sizeof(unsigned long long int)) )
-    // CHECK_CUDA( cudaMalloc((void**) &dB_groupmask,      k * n / TILE_HEIGHT / TILE_WIDTH * MAX_GROUP_NUM * sizeof(unsigned long long int)) )
-
     int *dB_bitmask, *dB_groupmask;
-    CHECK_CUDA( cudaMalloc((void**) &dB_bitmask,        k * n / TILE_WIDTH * sizeof(int)) )
-    CHECK_CUDA( cudaMalloc((void**) &dB_groupmask,      k * n / SPLIT_K / TILE_WIDTH * MAX_GROUP_NUM * sizeof(int)) )
-    
 
+    // basic allocation
     CHECK_CUDA( cudaMalloc((void**) &dA_dense,          m * k * sizeof(float)) )
     CHECK_CUDA( cudaMalloc((void**) &dA_csr_offsets,   (m + 1) * sizeof(int)) )
     CHECK_CUDA( cudaMalloc((void**) &dB_dense,          k * n * sizeof(float)) )
+    CHECK_CUDA( cudaMalloc((void**) &dB_csr_offsets,   (k + 1) * sizeof(int)) )
+    CHECK_CUDA( cudaMalloc((void**) &dC_csrOffsets,    (m + 1) * sizeof(int)) )
+
+    // advanced allocation
+    CHECK_CUDA( cudaMalloc((void**) &dB_bitmask,        k * n / TILE_WIDTH * sizeof(int)) )
+    CHECK_CUDA( cudaMalloc((void**) &dB_groupmask,      tileB_cnt * MAX_GROUP_NUM * sizeof(int)) )
     CHECK_CUDA( cudaMalloc((void**) &dB_group_ele_ind,  k * n / SPLIT_K * MAX_GROUP_NUM * sizeof(int)) )
     CHECK_CUDA( cudaMalloc((void**) &dB_group_ele_val,  k * n / SPLIT_K * MAX_GROUP_NUM * sizeof(float)) )
     CHECK_CUDA( cudaMalloc((void**) &dB_group_id,       k * n / TILE_WIDTH * sizeof(int)) )
-    CHECK_CUDA( cudaMalloc((void**) &dB_spilled_row_cnt,k * n / SPLIT_K / TILE_WIDTH * sizeof(int)) )
-    CHECK_CUDA( cudaMalloc((void**) &dB_spilled_nnz,    k * n / SPLIT_K / TILE_WIDTH * sizeof(int)) )
+    CHECK_CUDA( cudaMalloc((void**) &dB_spilled_row_cnt,tileB_cnt * sizeof(int)) )
+    CHECK_CUDA( cudaMalloc((void**) &dB_spilled_nnz,    tileB_cnt * sizeof(int)) )
     CHECK_CUDA( cudaMalloc((void**) &dB_spilled_row_hash_table_gmem,
-                                    k * n / SPLIT_K / TILE_WIDTH * SPLIT_K * sizeof(int)) )
+                                    tileB_cnt * SPLIT_K * sizeof(int)) )
     CHECK_CUDA( cudaMalloc((void**) &dB_spilled_row_hash_table_reverse_gmem,
-                                    k * n / SPLIT_K / TILE_WIDTH * SPLIT_K * sizeof(int)) )
+                                   tileB_cnt * SPLIT_K * sizeof(int)) )
 
-    // CHECK_CUDA( cudaMalloc((void**) &dB_tile_spilled_csrVal,     k * n / SPLIT_K / TILE_WIDTH * sizeof(float*)) )
-    // CHECK_CUDA( cudaMalloc((void**) &dB_tile_spilled_csrColInd,  k * n / SPLIT_K / TILE_WIDTH * sizeof(int*)) )
-    // CHECK_CUDA( cudaMalloc((void**) &dB_tile_spilled_csrRowPtr,  k * n / SPLIT_K / TILE_WIDTH * sizeof(int*)) )
     
     CHECK_CUDA( cudaMemcpy(dA_dense, hA_dense, m * k * sizeof(float),
                            cudaMemcpyHostToDevice) )
@@ -631,60 +601,111 @@ int main()
 
     printf("Matrix A dense2CSR...\n");
     int64_t nnzA;
-
+    int64_t num_rows_tmpA, num_cols_tmpA;
     // dense2CSR(m, k, dA_dense, dA_csr_values, dA_csr_offsets, dA_csr_columns, nnzA);
 
-    int num_cols = k;
-    int num_rows = m;
-    int ld = num_cols;
+    int num_colsA = k;
+    int num_rowsA = m;
+    int ld = num_colsA;
     //--------------------------------------------------------------------------
     // CUSPARSE APIs
     cusparseHandle_t     handle = NULL;
-    cusparseSpMatDescr_t matB;
-    cusparseDnMatDescr_t matA;
-    void*                dBuffer    = NULL;
-    size_t               bufferSize = 0;
+    cusparseSpMatDescr_t matA_sp;
+    cusparseDnMatDescr_t matA_dn;
+    void*                dBufferA    = NULL;
+    size_t               bufferSizeA = 0;
     CHECK_CUSPARSE( cusparseCreate(&handle) )
     // Create dense matrix A
-    CHECK_CUSPARSE( cusparseCreateDnMat(&matA, num_rows, num_cols, ld, dA_dense,
+    CHECK_CUSPARSE( cusparseCreateDnMat(&matA_dn, num_rowsA, num_colsA, ld, dA_dense,
                                         CUDA_R_32F, CUSPARSE_ORDER_ROW) )
     // Create sparse matrix B in CSR format
-    CHECK_CUSPARSE( cusparseCreateCsr(&matB, num_rows, num_cols, 0,
+    CHECK_CUSPARSE( cusparseCreateCsr(&matA_sp, num_rowsA, num_colsA, 0,
                                       dA_csr_offsets, NULL, NULL,
                                       CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
                                       CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) )
 
     // allocate an external buffer if needed
     CHECK_CUSPARSE( cusparseDenseToSparse_bufferSize(
-                                        handle, matA, matB,
+                                        handle, matA_dn, matA_sp,
                                         CUSPARSE_DENSETOSPARSE_ALG_DEFAULT,
-                                        &bufferSize) )
-    CHECK_CUDA( cudaMalloc(&dBuffer, bufferSize) )
+                                        &bufferSizeA) )
+    CHECK_CUDA( cudaMalloc(&dBufferA, bufferSizeA) )
 
     // execute Sparse to Dense conversion
-    CHECK_CUSPARSE( cusparseDenseToSparse_analysis(handle, matA, matB,
+    CHECK_CUSPARSE( cusparseDenseToSparse_analysis(handle, matA_dn, matA_sp,
                                         CUSPARSE_DENSETOSPARSE_ALG_DEFAULT,
-                                        dBuffer) )
+                                        dBufferA) )
     // get number of non-zero elements
-    int64_t num_rows_tmp, num_cols_tmp;
-    CHECK_CUSPARSE( cusparseSpMatGetSize(matB, &num_rows_tmp, &num_cols_tmp,
+    CHECK_CUSPARSE( cusparseSpMatGetSize(matA_sp, &num_rows_tmpA, &num_cols_tmpA,
                                          &nnzA) )
 
     // allocate CSR column indices and values
     CHECK_CUDA( cudaMalloc((void**) &dA_csr_columns, nnzA * sizeof(int))   )
     CHECK_CUDA( cudaMalloc((void**) &dA_csr_values,  nnzA * sizeof(float)) )
     // reset offsets, column indices, and values pointers
-    CHECK_CUSPARSE( cusparseCsrSetPointers(matB, dA_csr_offsets, dA_csr_columns,
+    CHECK_CUSPARSE( cusparseCsrSetPointers(matA_sp, dA_csr_offsets, dA_csr_columns,
                                            dA_csr_values) )
     // execute Sparse to Dense conversion
-    CHECK_CUSPARSE( cusparseDenseToSparse_convert(handle, matA, matB,
+    CHECK_CUSPARSE( cusparseDenseToSparse_convert(handle, matA_dn, matA_sp,
                                         CUSPARSE_DENSETOSPARSE_ALG_DEFAULT,
-                                        dBuffer) )
+                                        dBufferA) )
     // destroy matrix/vector descriptors
-    CHECK_CUSPARSE( cusparseDestroyDnMat(matA) )
-    CHECK_CUSPARSE( cusparseDestroySpMat(matB) )
-    CHECK_CUSPARSE( cusparseDestroy(handle) )
+    CHECK_CUSPARSE( cusparseDestroyDnMat(matA_dn) )
+    CHECK_CUSPARSE( cusparseDestroySpMat(matA_sp) )
+    // CHECK_CUSPARSE( cusparseDestroy(handle) )
 
+
+    int64_t nnzB;
+    int64_t num_rows_tmpB, num_cols_tmpB;
+    // dense2CSR(m, k, dA_dense, dA_csr_values, dA_csr_offsets, dA_csr_columns, nnzA);
+
+    int num_colsB = n;
+    int num_rowsB = k;
+    ld = num_colsB;
+    //--------------------------------------------------------------------------
+    // CUSPARSE APIs
+    cusparseSpMatDescr_t matB_sp;
+    cusparseDnMatDescr_t matB_dn;
+    void*                dBufferB    = NULL;
+    size_t               bufferSizeB = 0;
+    CHECK_CUSPARSE( cusparseCreate(&handle) )
+    // Create dense matrix A
+    CHECK_CUSPARSE( cusparseCreateDnMat(&matB_dn, num_rowsB, num_colsB, ld, dB_dense,
+                                        CUDA_R_32F, CUSPARSE_ORDER_ROW) )
+    // Create sparse matrix B in CSR format
+    CHECK_CUSPARSE( cusparseCreateCsr(&matB_sp, num_rowsB, num_colsB, 0,
+                                      dB_csr_offsets, NULL, NULL,
+                                      CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
+                                      CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) )
+
+    // allocate an external buffer if needed
+    CHECK_CUSPARSE( cusparseDenseToSparse_bufferSize(
+                                        handle, matB_dn, matB_sp,
+                                        CUSPARSE_DENSETOSPARSE_ALG_DEFAULT,
+                                        &bufferSizeB) )
+    CHECK_CUDA( cudaMalloc(&dBufferB, bufferSizeB) )
+
+    // execute Sparse to Dense conversion
+    CHECK_CUSPARSE( cusparseDenseToSparse_analysis(handle, matB_dn, matB_sp,
+                                        CUSPARSE_DENSETOSPARSE_ALG_DEFAULT,
+                                        dBufferB) )
+    // get number of non-zero elements
+    CHECK_CUSPARSE( cusparseSpMatGetSize(matB_sp, &num_rows_tmpB, &num_cols_tmpB,
+                                         &nnzB) )
+
+    // allocate CSR column indices and values
+    CHECK_CUDA( cudaMalloc((void**) &dB_csr_columns, nnzB * sizeof(int))   )
+    CHECK_CUDA( cudaMalloc((void**) &dB_csr_values,  nnzB * sizeof(float)) )
+    // reset offsets, column indices, and values pointers
+    CHECK_CUSPARSE( cusparseCsrSetPointers(matB_sp, dB_csr_offsets, dB_csr_columns,
+                                           dB_csr_values) )
+    // execute Sparse to Dense conversion
+    CHECK_CUSPARSE( cusparseDenseToSparse_convert(handle, matB_dn, matB_sp,
+                                        CUSPARSE_DENSETOSPARSE_ALG_DEFAULT,
+                                        dBufferB) )
+    // destroy matrix/vector descriptors
+    CHECK_CUSPARSE( cusparseDestroyDnMat(matB_dn) )
+    CHECK_CUSPARSE( cusparseDestroySpMat(matB_sp) )
 
     // test_kernel<<<grid1, block1>>>(dB_groupmask);
     // int *hB_groupmask = (int*)malloc(k * n / SPLIT_K / TILE_WIDTH * MAX_GROUP_NUM * sizeof(int));
@@ -708,7 +729,37 @@ int main()
                                      dB_spilled_row_hash_table_reverse_gmem // output
                                      );
 
-    generate_groups_step2<<<grid1, block1>>>(dB_bitmask,                            // input
+    int *hB_spilled_nnz = (int*)malloc(tileB_cnt * sizeof(int));
+    int *hB_spilled_row_cnt = (int*)malloc(tileB_cnt * sizeof(int));
+    cudaMemcpy(hB_spilled_nnz, dB_spilled_nnz, tileB_cnt * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(hB_spilled_row_cnt, dB_spilled_row_cnt, tileB_cnt * sizeof(int), cudaMemcpyDeviceToHost);
+
+    int nnz_cnt = 0;
+    int row_cnt = 0;
+    int *hB_spilled_nnz_offset = (int*)malloc(tileB_cnt * sizeof(int));
+    int *hB_spilled_row_cnt_offset = (int*)malloc(tileB_cnt * sizeof(int));
+    float *dB_tile_spilled_csrVal;
+    int *dB_tile_spilled_csrColInd, *dB_tile_spilled_csrRowPtr;
+    int *dB_spilled_nnz_offset, *dB_spilled_row_cnt_offset;
+    CHECK_CUDA( cudaMalloc((void**) &dB_spilled_nnz_offset,     tileB_cnt * sizeof(int)) )
+    CHECK_CUDA( cudaMalloc((void**) &dB_spilled_row_cnt_offset,  tileB_cnt * sizeof(int)) )
+    for (int i = 0; i < tileB_cnt; i++)
+    {
+        std::cout << "hB_spilled_nnz     -- " << i << ": " << hB_spilled_nnz[i] << std::endl;
+        std::cout << "hB_spilled_row_cnt -- " << i << ": " << hB_spilled_row_cnt[i] << std::endl;
+        hB_spilled_nnz_offset[i] = nnz_cnt;
+        hB_spilled_row_cnt_offset[i] = row_cnt;
+        nnz_cnt += hB_spilled_nnz[i];
+        row_cnt += hB_spilled_row_cnt[i];
+    }
+    cudaMemcpy(dB_spilled_nnz_offset, hB_spilled_nnz_offset, tileB_cnt * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(dB_spilled_row_cnt_offset, hB_spilled_row_cnt_offset, tileB_cnt * sizeof(int), cudaMemcpyHostToDevice);
+
+    CHECK_CUDA( cudaMalloc((void**) &dB_tile_spilled_csrVal,     nnz_cnt * sizeof(float)) )
+    CHECK_CUDA( cudaMalloc((void**) &dB_tile_spilled_csrColInd,  nnz_cnt * sizeof(int)) )
+    CHECK_CUDA( cudaMalloc((void**) &dB_tile_spilled_csrRowPtr,  row_cnt * sizeof(int)) )
+
+    generate_spilled_csr<<<grid1, block1>>>(dB_bitmask,                            // input
                                      dB_groupmask,                          // output, for visualization
                                      dB_group_ele_ind,                      // output, not necessary
                                      dB_group_ele_val,                      // output
@@ -716,18 +767,46 @@ int main()
                                      dB_group_id,                           // output
                                      dB_spilled_row_cnt,                    // output
                                      dB_spilled_nnz,
-                                    //  dB_tile_spilled_csrVal,                // output
-                                    //  dB_tile_spilled_csrColInd,             // output
-                                    //  dB_tile_spilled_csrRowPtr,             // output
+                                     dB_spilled_row_cnt_offset,
+                                     dB_spilled_nnz_offset,
+                                     dB_tile_spilled_csrVal,                // output
+                                     dB_tile_spilled_csrColInd,             // output
+                                     dB_tile_spilled_csrRowPtr,             // output
                                      dB_spilled_row_hash_table_gmem,
                                      dB_spilled_row_hash_table_reverse_gmem // output
                                      );
+
+    std::cout << "Total nnz: " << nnz_cnt << "  Total row_cnt: " << row_cnt << std::endl;
+    CHECK_CUDA(cudaDeviceSynchronize())
+    float *hB_tile_spilled_csrVal = (float*)malloc(nnz_cnt * sizeof(float));
+    int *hB_tile_spilled_csrColInd = (int*)malloc(nnz_cnt * sizeof(int));
+    int *hB_tile_spilled_csrRowPtr = (int*)malloc(row_cnt * sizeof(int));
+
+    cudaMemcpy(hB_tile_spilled_csrVal, dB_tile_spilled_csrVal, nnz_cnt * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(hB_tile_spilled_csrColInd, dB_tile_spilled_csrColInd, nnz_cnt * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(hB_tile_spilled_csrRowPtr, dB_tile_spilled_csrRowPtr, row_cnt * sizeof(int), cudaMemcpyDeviceToHost);
+
+    // for (int i = 0; i < nnz_cnt; i++)
+    // {
+    //     std::cout << "ColInd: " << hB_tile_spilled_csrColInd[i] << "   Value: " << hB_tile_spilled_csrVal[i] << std::endl;
+    // }
 
     // int *hB_groupmask = (int*)malloc(k * n / SPLIT_K / TILE_WIDTH * MAX_GROUP_NUM * sizeof(int));
     // cudaMemcpy(hB_groupmask, dB_groupmask, k * n / SPLIT_K / TILE_WIDTH * MAX_GROUP_NUM * sizeof(int), cudaMemcpyDeviceToHost);
     // printintMatrix_32(16, hB_groupmask, "B_groupmask");
 
+    float *dC_final_result_gmem;
+    CHECK_CUDA( cudaMalloc((void**) &dC_final_result_gmem,  SIZE_M * SIZE_N * sizeof(float)) )
+
+    cudaEvent_t start, end, cusparse_start, cusparse_end;
+    cudaEventCreate(&start);
+    cudaEventCreate(&end);
+    cudaEventCreate(&cusparse_start);
+    cudaEventCreate(&cusparse_end);
+
     // spgemm
+
+    cudaEventRecord(start);
     bit_wise_spgemm<<<grid2, block2>>>(SPLIT_K, 
                                     dA_csr_values, 
                                     dA_csr_offsets, 
@@ -737,11 +816,121 @@ int main()
                                     dB_group_id, 
                                     dB_spilled_row_cnt,
                                     dB_spilled_nnz,
-                                    // dB_tile_spilled_csrVal, 
-                                    // dB_tile_spilled_csrColInd, 
-                                    // dB_tile_spilled_csrRowPtr, 
-                                    dB_spilled_row_hash_table_reverse_gmem
+                                    dB_spilled_row_cnt_offset,
+                                    dB_spilled_nnz_offset,
+                                    dB_tile_spilled_csrVal,
+                                    dB_tile_spilled_csrColInd,
+                                    dB_tile_spilled_csrRowPtr,
+                                    dB_spilled_row_hash_table_reverse_gmem,
+                                    dC_final_result_gmem
                                     );
+    cudaEventRecord(end);
+    cudaEventSynchronize(end);
+
+    float ms;
+    cudaEventElapsedTime(&ms, start, end);
+    cudaEventDestroy(start);
+    cudaEventDestroy(end);
+
+    printf("Elapsed time1: %fms\n", ms);
+
+    // cusparse
+    cusparseSpMatDescr_t matA, matB, matC;
+    void*  dBuffer1    = NULL, *dBuffer2   = NULL;
+    size_t bufferSize1 = 0,    bufferSize2 = 0;
+    CHECK_CUSPARSE( cusparseCreateCsr(&matA, SIZE_M, SIZE_K, nnzA,
+                                      dA_csr_offsets, dA_csr_columns, dA_csr_values,
+                                      CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
+                                      CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) )
+    CHECK_CUSPARSE( cusparseCreateCsr(&matB, SIZE_K, SIZE_N, nnzB,
+                                      dB_csr_offsets, dB_csr_columns, dB_csr_values,
+                                      CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
+                                      CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) )
+    CHECK_CUSPARSE( cusparseCreateCsr(&matC, SIZE_M, SIZE_N, 0,
+                                      NULL, NULL, NULL,
+                                      CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
+                                      CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) )
+
+    float               alpha       = 1.0f;
+    float               beta        = 0.0f;
+    cusparseOperation_t opA         = CUSPARSE_OPERATION_NON_TRANSPOSE;
+    cusparseOperation_t opB         = CUSPARSE_OPERATION_NON_TRANSPOSE;
+    cudaDataType        computeType = CUDA_R_32F;
+    //--------------------------------------------------------------------------
+    // SpGEMM Computation
+
+    cusparseSpGEMMDescr_t spgemmDesc;
+    CHECK_CUSPARSE( cusparseSpGEMM_createDescr(&spgemmDesc) )
+
+    // ask bufferSize1 bytes for external memory
+    CHECK_CUSPARSE(
+        cusparseSpGEMM_workEstimation(handle, opA, opB,
+                                      &alpha, matA, matB, &beta, matC,
+                                      computeType, CUSPARSE_SPGEMM_DEFAULT,
+                                      spgemmDesc, &bufferSize1, NULL) )
+    CHECK_CUDA( cudaMalloc((void**) &dBuffer1, bufferSize1) )
+    // inspect the matrices A and B to understand the memory requirement for
+    // the next step
+    CHECK_CUSPARSE(
+        cusparseSpGEMM_workEstimation(handle, opA, opB,
+                                      &alpha, matA, matB, &beta, matC,
+                                      computeType, CUSPARSE_SPGEMM_DEFAULT,
+                                      spgemmDesc, &bufferSize1, dBuffer1) )
+
+    cudaEventRecord(cusparse_start);
+    // ask bufferSize2 bytes for external memory
+    CHECK_CUSPARSE(
+        cusparseSpGEMM_compute(handle, opA, opB,
+                               &alpha, matA, matB, &beta, matC,
+                               computeType, CUSPARSE_SPGEMM_DEFAULT,
+                               spgemmDesc, &bufferSize2, NULL) )
+    CHECK_CUDA( cudaMalloc((void**) &dBuffer2, bufferSize2) )
+
+    // compute the intermediate product of A * B
+    CHECK_CUSPARSE( cusparseSpGEMM_compute(handle, opA, opB,
+                                           &alpha, matA, matB, &beta, matC,
+                                           computeType, CUSPARSE_SPGEMM_DEFAULT,
+                                           spgemmDesc, &bufferSize2, dBuffer2) )
+
+    cudaEventRecord(cusparse_end);
+    cudaEventSynchronize(cusparse_end);
+
+    float cusparse_ms;
+    cudaEventElapsedTime(&cusparse_ms, cusparse_start, cusparse_end);
+    cudaEventDestroy(cusparse_start);
+    cudaEventDestroy(cusparse_end);
+
+    printf("Elapsed time2: %fms\n", cusparse_ms);
+
+    // get matrix C non-zero entries C_nnz1
+    int64_t C_num_rows1, C_num_cols1, C_nnz1;
+    CHECK_CUSPARSE( cusparseSpMatGetSize(matC, &C_num_rows1, &C_num_cols1,
+                                         &C_nnz1) )
+    // allocate matrix C
+    CHECK_CUDA( cudaMalloc((void**) &dC_columns, C_nnz1 * sizeof(int))   )
+    CHECK_CUDA( cudaMalloc((void**) &dC_values,  C_nnz1 * sizeof(float)) )
+
+    // NOTE: if 'beta' != 0, the values of C must be update after the allocation
+    //       of dC_values, and before the call of cusparseSpGEMM_copy
+
+    // update matC with the new pointers
+    CHECK_CUSPARSE(
+        cusparseCsrSetPointers(matC, dC_csrOffsets, dC_columns, dC_values) )
+
+    // if beta != 0, cusparseSpGEMM_copy reuses/updates the values of dC_values
+
+    // copy the final products to the matrix C
+    CHECK_CUSPARSE(
+        cusparseSpGEMM_copy(handle, opA, opB,
+                            &alpha, matA, matB, &beta, matC,
+                            computeType, CUSPARSE_SPGEMM_DEFAULT, spgemmDesc) )
+
+    // destroy matrix/vector descriptors
+    CHECK_CUSPARSE( cusparseSpGEMM_destroyDescr(spgemmDesc) )
+    CHECK_CUSPARSE( cusparseDestroySpMat(matA) )
+    CHECK_CUSPARSE( cusparseDestroySpMat(matB) )
+    CHECK_CUSPARSE( cusparseDestroySpMat(matC) )
+    CHECK_CUSPARSE( cusparseDestroy(handle) )
 
 
    // print MatA's information
