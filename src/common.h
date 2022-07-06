@@ -26,6 +26,9 @@
 #define SIZE_N 64
 #define SPLIT_K 64
 
+#define PRINT_MAT_A_INFO false
+#define PRINT_MAT_B_INFO true
+
 #ifndef SMATRIX
 #define SMATRIX
 typedef struct 
