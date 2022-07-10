@@ -17,17 +17,18 @@
 #define MAT_PTR_TYPE float
 #endif
 
+#define SPARSITY 90
 #define BIT_WIDTH 8
 #define MAX_GROUP_NUM 8
 #define TILE_HEIGHT 32
 #define TILE_WIDTH 32
-#define SIZE_M 64
-#define SIZE_K 64
-#define SIZE_N 64
-#define SPLIT_K 64
+#define SIZE_M 1024
+#define SIZE_K 1024
+#define SIZE_N 1024
+#define SPLIT_K 256
 
 #define PRINT_MAT_A_INFO false
-#define PRINT_MAT_B_INFO true
+#define PRINT_MAT_B_INFO false
 
 #ifndef SMATRIX
 #define SMATRIX

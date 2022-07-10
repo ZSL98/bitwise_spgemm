@@ -34,7 +34,6 @@ __global__ void generate_groups(int32_or_64 *MatB_bit,
                                 )
 {
     int bid = blockIdx.y * gridDim.x + blockIdx.x;  
-    int tid = bid * blockDim.x + threadIdx.x;
     int row_ind = blockDim.x * blockIdx.y + threadIdx.x;
     int entry_ind = row_ind * gridDim.x * TILE_WIDTH + blockIdx.x * TILE_WIDTH;
     int entry_ind_bit = row_ind * gridDim.x + blockIdx.x;
@@ -121,8 +120,6 @@ __global__ void generate_groups(int32_or_64 *MatB_bit,
 
     if (threadIdx.x == 0)
     {
-
-        int nz_ind;
         int spilled_row;
 
         for (int i = 0; i < spilled_row_cnt[bid]; i++)
@@ -181,10 +178,9 @@ __global__ void generate_spilled_csr(int32_or_64 *MatB_bit,
 {
 
     int bid = blockIdx.y * gridDim.x + blockIdx.x;  
-    int tid = bid * blockDim.x + threadIdx.x;
     int row_ind = blockDim.x * blockIdx.y + threadIdx.x;
     int entry_ind = row_ind * gridDim.x * TILE_WIDTH + blockIdx.x * TILE_WIDTH;
-    int entry_ind_bit = row_ind * gridDim.x + blockIdx.x;
+    // int entry_ind_bit = row_ind * gridDim.x + blockIdx.x;
 
     __shared__ float d_dense_smem[SPLIT_K][TILE_WIDTH];
     __shared__ int spilled_row_hash_table_smem[SPLIT_K];
@@ -257,6 +253,196 @@ __global__ void generate_spilled_csr(int32_or_64 *MatB_bit,
 
 // }
 
+
+template <typename int32_or_64>
+__global__ void bit_wise_spgemm_3d(int split_k,
+                                float *d_csr_values, 
+                                int *d_csr_offsets, 
+                                int *d_csr_columns,
+                                float *d_group_ele_row_val,
+                                int32_or_64 *MatB_bit,           // MatrixB's bit mask
+                                int *group_id_gmem,                         // MatrixB's group ID
+                                int *spilled_row_cnt,
+                                int *spilled_nnz,
+                                int *spilled_row_cnt_offset,
+                                int *spilled_nnz_offset,
+                                float *tile_spilled_csrVal,
+                                int *tile_spilled_csrColInd,
+                                int *tile_spilled_csrRowPtr,
+                                int *spilled_row_hash_table_reverse_gmem,
+                                float *final_result_gmem
+                                )
+{
+
+    int assigned_row_ind = blockIdx.y * blockDim.x + threadIdx.x;
+
+    __shared__ int32_or_64 group_indicator[TILE_HEIGHT][BIT_WIDTH][MAX_GROUP_NUM];
+    __shared__ float result[TILE_HEIGHT][BIT_WIDTH][TILE_WIDTH];
+    __shared__ int group_id_smem[SPLIT_K];
+    __shared__ int spilled_row_hash_table_reverse_smem[SPLIT_K];
+
+    for (int k = 0; k < SIZE_K/SPLIT_K; k++)
+    {
+        if (threadIdx.z < MAX_GROUP_NUM)
+        {
+            group_indicator[threadIdx.x][threadIdx.y][threadIdx.z] = 0;
+        }
+
+        
+        int tileB_id = k * gridDim.x + blockIdx.x;
+        // Load group_id to shared memory
+        // Load spilled_row_hash_table_reverse to shared memory
+        if ((threadIdx.y == 0) && (threadIdx.z == 0))
+        {
+            for (int i = 0; i < SPLIT_K/blockDim.x; i++)
+            {
+                int row_ind = k * SPLIT_K + i * blockDim.x + threadIdx.x;
+                int entry = row_ind * gridDim.x + blockIdx.x;
+                // Note that the layout of group_id is row major while the layout of spilled_row_hash_table is block major
+                group_id_smem[i * blockDim.x + threadIdx.x] = group_id_gmem[entry];
+                spilled_row_hash_table_reverse_smem[i * blockDim.x + threadIdx.x] 
+                    = spilled_row_hash_table_reverse_gmem[i * blockDim.x + threadIdx.x + tileB_id * SPLIT_K];
+            }
+        }
+
+
+    }
+}
+
+
+template <typename int32_or_64>
+__global__ void generate_group_indicator(
+            int32_or_64 *MatB_bit,
+            float *dA_dense_gmem,
+            int *group_id_gmem,
+            int *spilled_row_hash_table_reverse_gmem,
+            float *d_group_ele_row_val,
+                int *spilled_row_cnt_offset,
+                int *spilled_nnz_offset,
+                float *tile_spilled_csrVal,
+                int *tile_spilled_csrColInd,
+                int *tile_spilled_csrRowPtr
+            )
+{
+    __shared__ float dA_dense_smem[TILE_HEIGHT][SPLIT_K];
+    __shared__ int group_id_smem[SPLIT_K];
+    __shared__ int spilled_row_hash_table_reverse_smem[SPLIT_K];
+    __shared__ int32_or_64 group_indicator[TILE_HEIGHT][BIT_WIDTH][MAX_GROUP_NUM];
+    // __shared__ int group_indicator_t[TILE_HEIGHT][BIT_WIDTH][TILE_WIDTH];
+    __shared__ float group[MAX_GROUP_NUM][TILE_WIDTH];
+    __shared__ float result[TILE_HEIGHT][BIT_WIDTH][TILE_WIDTH];
+    
+    int row_group_id;
+    
+    for (int k = 0; k < SIZE_K/SPLIT_K; k++)
+    {
+        int tileA_id = gridDim.x * blockIdx.y + k;
+        int tileB_id = k * gridDim.x + blockIdx.x;
+
+        if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0)
+        {
+            printf("tileA_id: %d, k: %d\n", tileA_id, k);
+        }
+
+        // Load MatB's group data into shared memory
+        if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z < TILE_WIDTH)
+        {
+            for (int i = 0; i < MAX_GROUP_NUM; i++)
+            {
+                group[i][threadIdx.z] = d_group_ele_row_val[(MAX_GROUP_NUM * tileB_id + i) * TILE_WIDTH + threadIdx.z];
+            }
+        }
+
+        // Load MatB's group information into shared memory
+        for (int i = 0; i < SPLIT_K/blockDim.x; i++)
+        {
+            int rowB_ind = k * SPLIT_K + i * blockDim.x + threadIdx.x;
+            int entry = rowB_ind * gridDim.x + blockIdx.x;
+            // Note that the layout of group_id is row major while the layout of spilled_row_hash_table is block major
+            group_id_smem[i * blockDim.x + threadIdx.x] = group_id_gmem[entry];
+            spilled_row_hash_table_reverse_smem[i * blockDim.x + threadIdx.x] 
+                = spilled_row_hash_table_reverse_gmem[i * blockDim.x + threadIdx.x + tileB_id * SPLIT_K];
+        }
+
+        int rowA_ind = blockIdx.y * blockDim.x + threadIdx.x;
+        int entry = rowA_ind * SIZE_K + k * SPLIT_K + threadIdx.z;
+        int tmp = (__float_as_int(dA_dense_gmem[entry]) >> threadIdx.y) & 1 == 0x01;
+        // if ((__float_as_int(dA_dense_gmem[entry]) >> threadIdx.y) & 1 == 0x01)
+        if ((threadIdx.y%2+threadIdx.z%2)%2 == 0)
+        {
+            row_group_id = group_id_smem[threadIdx.z];
+            if (row_group_id != -1)
+            {
+                int entry = ((TILE_HEIGHT * k) + threadIdx.z) * gridDim.x + blockIdx.x;
+                atomicOr(&group_indicator[threadIdx.x][threadIdx.y][row_group_id], MatB_bit[entry]);
+            }
+            else 
+            {
+                // Current row_ind_in_tile in MatrixB is the spilled row
+                // Perform the extra computation
+                int row_in_csr = spilled_row_hash_table_reverse_smem[threadIdx.z];
+                int start_offset;
+                if (row_in_csr == 0)
+                {
+                    start_offset = 0;
+                }
+                else 
+                {
+                    start_offset = tile_spilled_csrRowPtr[spilled_row_cnt_offset[tileB_id] + row_in_csr - 1];
+                }
+                for (int j = start_offset; j < tile_spilled_csrRowPtr[spilled_row_cnt_offset[tileB_id] + row_in_csr]; j++)
+                {
+                    int col_ind = tile_spilled_csrColInd[spilled_nnz_offset[tileB_id] + j];
+                    result[threadIdx.x][threadIdx.y][col_ind] += tile_spilled_csrVal[spilled_nnz_offset[tileB_id] + j];
+                }
+            }
+        }
+
+        if (threadIdx.z < TILE_WIDTH)
+        {
+            for (int i = 0; i < MAX_GROUP_NUM; i++)
+            {
+                // group_indicator_t[threadIdx.x][threadIdx.y][threadIdx.z] = 
+                //     group_indicator_t[threadIdx.x][threadIdx.y][threadIdx.z] | 
+                //     (((group_indicator[threadIdx.x][threadIdx.y][i] >> threadIdx.z) & 0x01) << i);
+                if (((group_indicator[threadIdx.x][threadIdx.y][i] >> threadIdx.z) & 0x01) == 1)
+                {
+                    result[threadIdx.x][threadIdx.y][threadIdx.z] += group[i][threadIdx.z];
+                }
+            }
+        }
+
+    }
+}
+
+// template <typename int32_or_64>
+// __global__ void spgemm_compute(
+//             int32_or_64 group_indicator_gmem,
+//             float *d_group_ele_row_val)
+// {
+//     __shared__ int32_or_64 group_indicator_smem[TILE_HEIGHT][BIT_WIDTH][MAX_GROUP_NUM];
+//     float group[MAX_GROUP_NUM];
+//     for (int i = 0; i < MAX_GROUP_NUM; i++)
+//     {
+//         group[i] = d_group_ele_row_val[(MAX_GROUP_NUM * tileB_id + i) * TILE_WIDTH + threadIdx.x];
+//     }
+
+//     for (int i = 0; i < TILE_HEIGHT; i++) 
+//     {
+//         for (int b = 0; b < BIT_WIDTH; b++)
+//         {
+//             for (int j = 0; j < MAX_GROUP_NUM; j++) 
+//             {
+//                 register_idx = (group_indicator[i][b][j] >> threadIdx.x) & 1;
+//                 if (register_idx == 1)
+//                 {
+//                     result[i][b][threadIdx.x] += group[1 << j];
+//                 }
+//             }
+//         }
+//     }
+// }
+
 template <typename int32_or_64>
 __global__ void bit_wise_spgemm(int split_k,
                                 float *d_csr_values, 
@@ -276,12 +462,11 @@ __global__ void bit_wise_spgemm(int split_k,
                                 float *final_result_gmem
                                 )
 {
-    int bid = blockIdx.y * gridDim.x + blockIdx.x;
-    int tid = bid * blockDim.x + threadIdx.x;
+    // int bid = blockIdx.y * gridDim.x + blockIdx.x;
     int assigned_row_ind = blockIdx.y * blockDim.x + threadIdx.x;
     // int assigned_col_ind = blockIdx.x * split_k;
     // int assigned_bit_pos = threadIdx.x % BIT_WIDTH;
-    int entry_ind_bit = assigned_row_ind * gridDim.x + blockIdx.x;
+    // int entry_ind_bit = assigned_row_ind * gridDim.x + blockIdx.x;
 
     // printf("bid: %d, tid: %d, d_csr_values: %f \n", bid, tid, d_csr_values[tid]);
 
@@ -328,9 +513,9 @@ __global__ void bit_wise_spgemm(int split_k,
                 for (int b = 0; b < BIT_WIDTH; b++)
                 {
                     int tmp = __float_as_int(d_csr_values[i]);
-                    int mv_bit = b+16;
+                    // int mv_bit = b+16;
                     // if((tmp >> mv_bit) & 1 == 0x01)
-                    // test
+                    // TEST!!! UNCOMMENT THE ABOVE TWO LINES!!
                     if ((b%2+row_ind_in_tile%2)%2 == 0)
                     {
                         row_group_id = group_id_smem[row_ind_in_tile];
@@ -345,10 +530,7 @@ __global__ void bit_wise_spgemm(int split_k,
                         {
                             // Current row_ind_in_tile in MatrixB is the spilled row
                             // Perform the extra computation
-                            // printf("bid: %d, threadIdx.x: %d, row_ind_in_tile: %d \n", bid, threadIdx.x, row_ind_in_tile);
                             int row_in_csr = spilled_row_hash_table_reverse_smem[row_ind_in_tile];
-                            // printf("tileB_id: %d, row_ind_in_tile: %d, row_in_csr: %d, Ptr: %d, Ptr2: %d \n", 
-                            // tileB_id, row_ind_in_tile, row_in_csr, dB_tile_spilled_csrRowPtr[tileB_id][row_in_csr], dB_tile_spilled_csrRowPtr[tileB_id][row_in_csr+1]);
                             int start_offset;
                             if (row_in_csr == 0)
                             {
@@ -361,7 +543,6 @@ __global__ void bit_wise_spgemm(int split_k,
                             for (int j = start_offset; j < tile_spilled_csrRowPtr[spilled_row_cnt_offset[tileB_id] + row_in_csr]; j++)
                             {
                                 col_ind = tile_spilled_csrColInd[spilled_nnz_offset[tileB_id] + j];
-                                // printf("col_ind: %d \n", col_ind);
                                 result[threadIdx.x][b][col_ind] += tile_spilled_csrVal[spilled_nnz_offset[tileB_id] + j];
                             }
                         }
@@ -396,20 +577,17 @@ __global__ void bit_wise_spgemm(int split_k,
             {
                 for (int j = 0; j < MAX_GROUP_NUM; j++) 
                 {
-                    // register_idx = atomicAnd(&register_idx, (group_indicator[i][b][j] << threadIdx.x)); // this is one bit
                     register_idx = (group_indicator[i][b][j] >> threadIdx.x) & 1;
                     if (register_idx == 1)
                     {
                         result[i][b][threadIdx.x] += group[1 << j];
                     }
                 }
-                // result[i][b][tid] = group[register_idx];
             }
-
         }
     }
 
-    //compute with cuda kernel
+    // compute with cuda kernel
     for (int i = 0; i < blockDim.x; i++) 
     {
         for (int b = 0; b < BIT_WIDTH; b++)
@@ -523,23 +701,23 @@ int main()
     // using CSRDev = cusp::csr_matrix<IndexType,ValueType,cusp::device_memory>;
 
     // cudaDeviceSetLimit(cudaLimitMallocHeapSize, 1024*1024*1024);
-    dim3 grid1(2, 1, 1), block1(SPLIT_K, 1, 1);
-    // dim3 grid1(SIZE_K/SPLIT_K, SIZE_N/TILE_WIDTH, 1), block1(SPLIT_K, 1, 1);
-    dim3 grid2(SIZE_K/TILE_HEIGHT, SIZE_N/TILE_WIDTH, 1), block2(TILE_HEIGHT, 1, 1);
-
     const int m = SIZE_M;
     const int k = SIZE_K;
 	const int n = SIZE_N;
 
     int tileB_cnt = k * n / SPLIT_K / TILE_WIDTH;
+    int tileB_x_cnt = n / TILE_WIDTH;
+    int tileB_y_cnt = k / SPLIT_K;
 
-    int sparsity = 90;
+    dim3 grid1(tileB_x_cnt, tileB_y_cnt, 1), block1(SPLIT_K, 1, 1);
+    dim3 grid2(SIZE_M/TILE_HEIGHT, SIZE_N/TILE_WIDTH, 1), block2(TILE_HEIGHT, 1, 1);
+
 	float* hA_dense = (float*)malloc(sizeof(float)*m*k);
     float* hB_dense = (float*)malloc(sizeof(float)*k*n);
     float* hC_dense = (float*)malloc(sizeof(float)*m*n);
-    fill_random(hA_dense, m, k, sparsity);
-    fill_random(hB_dense, k, n, sparsity);
-    fill_random(hC_dense, m, n, sparsity);
+    fill_random(hA_dense, m, k, SPARSITY);
+    fill_random(hB_dense, k, n, SPARSITY);
+    fill_random(hC_dense, m, n, SPARSITY);
 
     // basic ptrs
     float *dA_dense, *dA_csr_values;
@@ -807,23 +985,39 @@ int main()
     // spgemm
 
     cudaEventRecord(start);
-    bit_wise_spgemm<<<grid2, block2>>>(SPLIT_K, 
-                                    dA_csr_values, 
-                                    dA_csr_offsets, 
-                                    dA_csr_columns, 
-                                    dB_group_ele_val, 
-                                    dB_bitmask, 
-                                    dB_group_id, 
-                                    dB_spilled_row_cnt,
-                                    dB_spilled_nnz,
-                                    dB_spilled_row_cnt_offset,
-                                    dB_spilled_nnz_offset,
-                                    dB_tile_spilled_csrVal,
-                                    dB_tile_spilled_csrColInd,
-                                    dB_tile_spilled_csrRowPtr,
-                                    dB_spilled_row_hash_table_reverse_gmem,
-                                    dC_final_result_gmem
-                                    );
+    // bit_wise_spgemm<<<grid2, block2>>>(SPLIT_K, 
+    //                                 dA_csr_values, 
+    //                                 dA_csr_offsets, 
+    //                                 dA_csr_columns, 
+    //                                 dB_group_ele_val, 
+    //                                 dB_bitmask, 
+    //                                 dB_group_id, 
+    //                                 dB_spilled_row_cnt,
+    //                                 dB_spilled_nnz,
+    //                                 dB_spilled_row_cnt_offset,
+    //                                 dB_spilled_nnz_offset,
+    //                                 dB_tile_spilled_csrVal,
+    //                                 dB_tile_spilled_csrColInd,
+    //                                 dB_tile_spilled_csrRowPtr,
+    //                                 dB_spilled_row_hash_table_reverse_gmem,
+    //                                 dC_final_result_gmem
+    //                                 );
+    printf("Generate group indicator\n");
+    dim3 grid3(SIZE_M/TILE_HEIGHT, SIZE_N/TILE_WIDTH, 1), block3(TILE_HEIGHT, BIT_WIDTH, SPLIT_K);
+    generate_group_indicator<<<grid3, block3>>>(dB_bitmask, 
+                                                dA_dense, 
+                                                dB_group_id, 
+                                                dB_spilled_row_hash_table_reverse_gmem,
+                                                dB_group_ele_val,
+                                     dB_spilled_row_cnt_offset,
+                                     dB_spilled_nnz_offset,
+                                     dB_tile_spilled_csrVal,                // output
+                                     dB_tile_spilled_csrColInd,             // output
+                                     dB_tile_spilled_csrRowPtr             // output
+                                                );
+
+    // spgemm_compute<<<grid2, block2>>>(dA_group_indicator_t_gmem, dB_group_ele_val);
+
     cudaEventRecord(end);
     cudaEventSynchronize(end);
 
@@ -1018,15 +1212,15 @@ int main()
         std::cout << "A random number: " << rand() % 100 << std::endl;
         int *hB_group_ele_ind = (int*)malloc(k * n / SPLIT_K * MAX_GROUP_NUM * sizeof(int));
         cudaMemcpy(hB_group_ele_ind, dB_group_ele_ind, k * n / SPLIT_K * MAX_GROUP_NUM * sizeof(int), cudaMemcpyDeviceToHost);
-        for (int i = 0; i < 32; i++)
-        {
-            std::cout << std::left << std::setw(4) << hB_group_ele_ind[i] << std::endl;
-        }
+        // for (int i = 0; i < 32; i++)
+        // {
+        //     std::cout << std::left << std::setw(4) << hB_group_ele_ind[i] << std::endl;
+        // }
     }
     
-    size_t *size;
-    cudaDeviceGetLimit(size, cudaLimitMallocHeapSize);
-    std::cout << "HeapSize: " << *size << std::endl;
+    // size_t *size;
+    // cudaDeviceGetLimit(size, cudaLimitMallocHeapSize);
+    // std::cout << "HeapSize: " << *size << std::endl;
 
     // free(dB)
 
