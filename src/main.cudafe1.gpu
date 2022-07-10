@@ -1,6 +1,8 @@
 typedef char __nv_bool;
 # 2763 "/usr/local/cuda/bin/../targets/x86_64-linux/include/driver_types.h"
 struct CUstream_st;
+# 2768 "/usr/local/cuda/bin/../targets/x86_64-linux/include/driver_types.h"
+struct CUevent_st;
 # 54 "/usr/local/cuda/bin/../targets/x86_64-linux/include/library_types.h"
 enum cudaDataType_t {
 # 56 "/usr/local/cuda/bin/../targets/x86_64-linux/include/library_types.h"
@@ -95,6 +97,14 @@ enum cusparseIndexBase_t {
 CUSPARSE_INDEX_BASE_ZERO,
 # 251 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cusparse.h"
 CUSPARSE_INDEX_BASE_ONE};
+# 254 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cusparse.h"
+enum cusparseOperation_t {
+# 255 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cusparse.h"
+CUSPARSE_OPERATION_NON_TRANSPOSE,
+# 256 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cusparse.h"
+CUSPARSE_OPERATION_TRANSPOSE,
+# 257 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cusparse.h"
+CUSPARSE_OPERATION_CONJUGATE_TRANSPOSE};
 # 5924 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cusparse.h"
 enum cusparseOrder_t {
 # 5925 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cusparse.h"
@@ -117,6 +127,16 @@ struct cusparseDnMatDescr;
 enum cusparseDenseToSparseAlg_t {
 # 6333 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cusparse.h"
 CUSPARSE_DENSETOSPARSE_ALG_DEFAULT};
+# 6570 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cusparse.h"
+enum cusparseSpGEMMAlg_t {
+# 6571 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cusparse.h"
+CUSPARSE_SPGEMM_DEFAULT,
+# 6572 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cusparse.h"
+CUSPARSE_SPGEMM_CSR_ALG_DETERMINITIC,
+# 6573 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cusparse.h"
+CUSPARSE_SPGEMM_CSR_ALG_NONDETERMINITIC};
+# 6576 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cusparse.h"
+struct cusparseSpGEMMDescr;
 # 106 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cuda_occupancy.h"
 enum cudaOccError_enum {
 # 107 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cuda_occupancy.h"
@@ -1150,6 +1170,8 @@ typedef struct cusparseContext *cusparseHandle_t;
 typedef enum cusparseStatus_t cusparseStatus_t;
 # 252 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cusparse.h"
 typedef enum cusparseIndexBase_t cusparseIndexBase_t;
+# 258 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cusparse.h"
+typedef enum cusparseOperation_t cusparseOperation_t;
 # 5927 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cusparse.h"
 typedef enum cusparseOrder_t cusparseOrder_t;
 # 5934 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cusparse.h"
@@ -1160,6 +1182,10 @@ typedef struct cusparseSpMatDescr *cusparseSpMatDescr_t;
 typedef struct cusparseDnMatDescr *cusparseDnMatDescr_t;
 # 6334 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cusparse.h"
 typedef enum cusparseDenseToSparseAlg_t cusparseDenseToSparseAlg_t;
+# 6574 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cusparse.h"
+typedef enum cusparseSpGEMMAlg_t cusparseSpGEMMAlg_t;
+# 6577 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cusparse.h"
+typedef struct cusparseSpGEMMDescr *cusparseSpGEMMDescr_t;
 # 32 "/usr/include/x86_64-linux-gnu/c++/9/bits/atomic_word.h" 3
 typedef int _Atomic_word;
 # 258 "/usr/include/x86_64-linux-gnu/c++/9/bits/c++config.h" 3
@@ -1498,12 +1524,14 @@ struct _ZN4cusp6system4cuda6detail16execution_policyINS2_5par_tEEE {};
 struct _ZN4cusp6system4cuda6detail5par_tE {};
 # 70 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cuda_device_runtime_api.h"
 ___device__(extern  __no_sc__) __inline__ enum cudaError cudaMalloc(void **, size_t);
-# 118 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cuda_device_runtime_api.h"
-___device__(extern  __no_sc__) enum cudaError cudaDeviceGetLimit(size_t *, enum cudaLimit);
 # 121 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cuda_device_runtime_api.h"
 ___device__(extern  __no_sc__) enum cudaError cudaDeviceSynchronize(void);
 # 124 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cuda_device_runtime_api.h"
 ___device__(extern  __no_sc__) const char *cudaGetErrorString(enum cudaError);
+# 133 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cuda_device_runtime_api.h"
+___device__(extern  __no_sc__) enum cudaError cudaEventRecord(struct CUevent_st *, struct CUstream_st *);
+# 137 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cuda_device_runtime_api.h"
+___device__(extern  __no_sc__) enum cudaError cudaEventDestroy(struct CUevent_st *);
 #if !defined(__CUDABE__)
 # 153 "/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/common_functions.h"
  __device_builtin__ ___device__(extern  __no_sc__) int printf(const char *__restrict__, ...);
@@ -1540,38 +1568,45 @@ ___device__(static  __no_sc__) __inline__ int _ZN34_INTERNAL_12_main_cpp1_ii_27d
 ___device__(static  __no_sc__) __inline__ int _ZN34_INTERNAL_12_main_cpp1_ii_27d4eacd9atomicCASEPiii(int *, int, int);
 # 3295 "/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/device_functions.h"
 ___device__(extern  __no_sc__) unsigned __cudaPushCallConfiguration(struct dim3, struct dim3, size_t, struct CUstream_st *);
-# 417 "main.cu"
+# 604 "main.cu"
 __global__ __var_used__ extern void _Z13dense2bitmaskIiEvPfPT_(float *, int *);
 # 21 "main.cu"
 __global__ __var_used__ extern void _Z15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_(int *, int *, int *, float *, float *, int *, int *, int *, int *, int *);
-# 165 "main.cu"
+# 162 "main.cu"
 __global__ __var_used__ extern void _Z20generate_spilled_csrIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_S3_S2_S2_S2_S2_(int *, int *, int *, float *, float *, int *, int *, int *, int *, int *, float *, int *, int *, int *, int *);
-# 261 "main.cu"
-__global__ __var_used__ extern void _Z15bit_wise_spgemmIiEviPfPiS1_S0_PT_S1_S1_S1_S1_S1_S0_S1_S1_S1_(int, float *, int *, int *, float *, int *, int *, int *, int *, int *, int *, float *, int *, int *, int *);
+# 314 "main.cu"
+__global__ __var_used__ extern void _Z24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_(int *, float *, int *, int *, float *, int *, int *, float *, int *, int *);
 # 117 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cub/block/../iterator/../util_device.cuh"
 __global__ __var_used__ extern void _ZN3cub11EmptyKernelIvEEvv(void);
-# 42 "main.cu"
+# 423 "/usr/local/cuda/bin/../targets/x86_64-linux/include/vector_types.h"
+___device__(extern  __no_sc__) __inline__ void _ZN4dim3C1Ejjj(struct dim3 *const, unsigned, unsigned, unsigned);
+___device__(extern  __no_sc__) __inline__ void _ZN4dim3C2Ejjj(struct dim3 *const, unsigned, unsigned, unsigned);
+# 41 "main.cu"
 static  __shared__  __var_used__ int _ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E9row_group[8];
-# 43 "main.cu"
+# 42 "main.cu"
 static  __shared__  __var_used__ int _ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E17group_ele_row_idx[8][32];
+# 43 "main.cu"
+static  __shared__  __var_used__ float _ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E12d_dense_smem[256][32];
 # 44 "main.cu"
-static  __shared__  __var_used__ float _ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E12d_dense_smem[64][32];
+static  __shared__  __var_used__ int _ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E27spilled_row_hash_table_smem[256];
 # 45 "main.cu"
-static  __shared__  __var_used__ int _ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E27spilled_row_hash_table_smem[64];
-# 46 "main.cu"
-static  __shared__  __var_used__ int _ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E35spilled_row_hash_table_reverse_smem[64];
-# 189 "main.cu"
-static  __shared__  __var_used__ float _ZZ20generate_spilled_csrIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_S3_S2_S2_S2_S2_E12d_dense_smem[64][32];
-# 190 "main.cu"
-static  __shared__  __var_used__ int _ZZ20generate_spilled_csrIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_S3_S2_S2_S2_S2_E27spilled_row_hash_table_smem[64];
-# 288 "main.cu"
-static  __shared__  __var_used__ int _ZZ15bit_wise_spgemmIiEviPfPiS1_S0_PT_S1_S1_S1_S1_S1_S0_S1_S1_S1_E15group_indicator[32][8][8];
-# 289 "main.cu"
-static  __shared__  __var_used__ float _ZZ15bit_wise_spgemmIiEviPfPiS1_S0_PT_S1_S1_S1_S1_S1_S0_S1_S1_S1_E6result[32][8][32];
-# 290 "main.cu"
-static  __shared__  __var_used__ int _ZZ15bit_wise_spgemmIiEviPfPiS1_S0_PT_S1_S1_S1_S1_S1_S0_S1_S1_S1_E13group_id_smem[64];
-# 291 "main.cu"
-static  __shared__  __var_used__ int _ZZ15bit_wise_spgemmIiEviPfPiS1_S0_PT_S1_S1_S1_S1_S1_S0_S1_S1_S1_E35spilled_row_hash_table_reverse_smem[64];
+static  __shared__  __var_used__ int _ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E35spilled_row_hash_table_reverse_smem[256];
+# 185 "main.cu"
+static  __shared__  __var_used__ float _ZZ20generate_spilled_csrIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_S3_S2_S2_S2_S2_E12d_dense_smem[256][32];
+# 186 "main.cu"
+static  __shared__  __var_used__ int _ZZ20generate_spilled_csrIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_S3_S2_S2_S2_S2_E27spilled_row_hash_table_smem[256];
+# 327 "main.cu"
+static  __shared__  __var_used__ float _ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E13dA_dense_smem[32][256];
+# 328 "main.cu"
+static  __shared__  __var_used__ int _ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E13group_id_smem[256];
+# 329 "main.cu"
+static  __shared__  __var_used__ int _ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E35spilled_row_hash_table_reverse_smem[256];
+# 330 "main.cu"
+static  __shared__  __var_used__ int _ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E15group_indicator[32][8][8];
+# 332 "main.cu"
+static  __shared__  __var_used__ float _ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E5group[8][32];
+# 333 "main.cu"
+static  __shared__  __var_used__ float _ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E6result[32][8][32];
 # 69 "/usr/local/cuda/bin/../targets/x86_64-linux/include/thrust/system/detail/sequential/execution_policy.h"
 static  __device__  __var_used__ const struct _ZN6thrust6system6detail10sequential3tagE _ZN34_INTERNAL_12_main_cpp1_ii_27d4eacd6thrust6system6detail10sequential3seqE;
 # 45 "/usr/local/cuda/bin/../targets/x86_64-linux/include/thrust/system/cpp/detail/par.h"
@@ -1697,79 +1732,79 @@ int val){
 return __iAtomicCAS(address, compare, val);
 # 173 "/usr/local/cuda/bin/../targets/x86_64-linux/include/device_atomic_functions.hpp"
 }}
-# 417 "main.cu"
+# 604 "main.cu"
 __global__ __var_used__ void _Z13dense2bitmaskIiEvPfPT_(
-# 417 "main.cu"
+# 604 "main.cu"
 float *MatB_dense, 
-# 417 "main.cu"
+# 604 "main.cu"
 int *MatB_bit){
-# 418 "main.cu"
+# 605 "main.cu"
 {
-# 422 "main.cu"
- int __cuda_local_var_190946_9_non_const_row_ind;
-# 423 "main.cu"
- int __cuda_local_var_190947_9_non_const_entry_ind;
-# 424 "main.cu"
- int __cuda_local_var_190948_9_non_const_entry_ind_bit;
-# 422 "main.cu"
-__cuda_local_var_190946_9_non_const_row_ind = ((int)(((blockDim.x) * (blockIdx.y)) + (threadIdx.x)));
-# 423 "main.cu"
-__cuda_local_var_190947_9_non_const_entry_ind = ((int)(((((unsigned)__cuda_local_var_190946_9_non_const_row_ind) * (gridDim.x)) * 32U) + ((blockIdx.x) * 32U)));
-# 424 "main.cu"
-__cuda_local_var_190948_9_non_const_entry_ind_bit = ((int)((((unsigned)__cuda_local_var_190946_9_non_const_row_ind) * (gridDim.x)) + (blockIdx.x)));
-# 425 "main.cu"
+# 609 "main.cu"
+ int __cuda_local_var_191104_9_non_const_row_ind;
+# 610 "main.cu"
+ int __cuda_local_var_191105_9_non_const_entry_ind;
+# 611 "main.cu"
+ int __cuda_local_var_191106_9_non_const_entry_ind_bit;
+# 609 "main.cu"
+__cuda_local_var_191104_9_non_const_row_ind = ((int)(((blockDim.x) * (blockIdx.y)) + (threadIdx.x)));
+# 610 "main.cu"
+__cuda_local_var_191105_9_non_const_entry_ind = ((int)(((((unsigned)__cuda_local_var_191104_9_non_const_row_ind) * (gridDim.x)) * 32U) + ((blockIdx.x) * 32U)));
+# 611 "main.cu"
+__cuda_local_var_191106_9_non_const_entry_ind_bit = ((int)((((unsigned)__cuda_local_var_191104_9_non_const_row_ind) * (gridDim.x)) + (blockIdx.x)));
+# 612 "main.cu"
 if (0)
-# 426 "main.cu"
+# 613 "main.cu"
 {
-# 427 "main.cu"
+# 614 "main.cu"
 {
-# 427 "main.cu"
+# 614 "main.cu"
  int i;
-# 427 "main.cu"
+# 614 "main.cu"
 i = 0;
-# 427 "main.cu"
+# 614 "main.cu"
 for (; (i < 64); i++)
-# 428 "main.cu"
+# 615 "main.cu"
 {
-# 429 "main.cu"
-if ((MatB_dense[(__cuda_local_var_190947_9_non_const_entry_ind + i)]) != (0.0F))
-# 430 "main.cu"
+# 616 "main.cu"
+if ((MatB_dense[(__cuda_local_var_191105_9_non_const_entry_ind + i)]) != (0.0F))
+# 617 "main.cu"
 {
-# 431 "main.cu"
-_ZN34_INTERNAL_12_main_cpp1_ii_27d4eacd8atomicOrEPii((MatB_bit + __cuda_local_var_190948_9_non_const_entry_ind_bit), ((int)(1ULL << i)));
-# 432 "main.cu"
+# 618 "main.cu"
+_ZN34_INTERNAL_12_main_cpp1_ii_27d4eacd8atomicOrEPii((MatB_bit + __cuda_local_var_191106_9_non_const_entry_ind_bit), ((int)(1ULL << i)));
+# 619 "main.cu"
 }
-# 433 "main.cu"
+# 620 "main.cu"
 } }
-# 434 "main.cu"
+# 621 "main.cu"
 } else  {
-# 435 "main.cu"
+# 622 "main.cu"
 if (1)
-# 436 "main.cu"
+# 623 "main.cu"
 {
-# 437 "main.cu"
+# 624 "main.cu"
 {
-# 437 "main.cu"
+# 624 "main.cu"
  int i;
-# 437 "main.cu"
+# 624 "main.cu"
 i = 0;
-# 437 "main.cu"
+# 624 "main.cu"
 for (; (i < 32); i++)
-# 438 "main.cu"
+# 625 "main.cu"
 {
-# 439 "main.cu"
-if ((MatB_dense[(__cuda_local_var_190947_9_non_const_entry_ind + i)]) != (0.0F))
-# 440 "main.cu"
+# 626 "main.cu"
+if ((MatB_dense[(__cuda_local_var_191105_9_non_const_entry_ind + i)]) != (0.0F))
+# 627 "main.cu"
 {
-# 441 "main.cu"
-_ZN34_INTERNAL_12_main_cpp1_ii_27d4eacd8atomicOrEPii((MatB_bit + __cuda_local_var_190948_9_non_const_entry_ind_bit), (1 << i));
-# 442 "main.cu"
+# 628 "main.cu"
+_ZN34_INTERNAL_12_main_cpp1_ii_27d4eacd8atomicOrEPii((MatB_bit + __cuda_local_var_191106_9_non_const_entry_ind_bit), (1 << i));
+# 629 "main.cu"
 }
-# 443 "main.cu"
+# 630 "main.cu"
 } }
-# 444 "main.cu"
+# 631 "main.cu"
 } } 
-# 445 "main.cu"
+# 632 "main.cu"
 }}
 # 21 "main.cu"
 __global__ __var_used__ void _Z15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_(
@@ -1798,686 +1833,572 @@ int *spilled_row_hash_table_reverse_gmem){
 # 36 "main.cu"
  int __cuda_local_var_190604_9_non_const_bid;
 # 37 "main.cu"
- int __cuda_local_var_190605_9_non_const_tid;
+ int __cuda_local_var_190605_9_non_const_row_ind;
 # 38 "main.cu"
- int __cuda_local_var_190606_9_non_const_row_ind;
+ int __cuda_local_var_190606_9_non_const_entry_ind;
 # 39 "main.cu"
- int __cuda_local_var_190607_9_non_const_entry_ind;
-# 40 "main.cu"
- int __cuda_local_var_190608_9_non_const_entry_ind_bit;
+ int __cuda_local_var_190607_9_non_const_entry_ind_bit;
+# 69 "main.cu"
+ int __cuda_local_var_190637_9_non_const_group_idx;
 # 70 "main.cu"
- int __cuda_local_var_190638_9_non_const_group_idx;
-# 71 "main.cu"
- int __cuda_local_var_190639_17_non_const_and_result;
-# 73 "main.cu"
- int __cuda_local_var_190641_17_non_const_expected;
-# 75 "main.cu"
- int __cuda_local_var_190643_17_non_const_or_result;
-# 77 "main.cu"
- int __cuda_local_var_190645_17_non_const_old_value;
+ int __cuda_local_var_190638_17_non_const_and_result;
+# 72 "main.cu"
+ int __cuda_local_var_190640_17_non_const_expected;
+# 74 "main.cu"
+ int __cuda_local_var_190642_17_non_const_or_result;
+# 76 "main.cu"
+ int __cuda_local_var_190644_17_non_const_old_value;
 # 36 "main.cu"
 __cuda_local_var_190604_9_non_const_bid = ((int)(((blockIdx.y) * (gridDim.x)) + (blockIdx.x)));
 # 37 "main.cu"
-__cuda_local_var_190605_9_non_const_tid = ((int)((((unsigned)__cuda_local_var_190604_9_non_const_bid) * (blockDim.x)) + (threadIdx.x)));
+__cuda_local_var_190605_9_non_const_row_ind = ((int)(((blockDim.x) * (blockIdx.y)) + (threadIdx.x)));
 # 38 "main.cu"
-__cuda_local_var_190606_9_non_const_row_ind = ((int)(((blockDim.x) * (blockIdx.y)) + (threadIdx.x)));
+__cuda_local_var_190606_9_non_const_entry_ind = ((int)(((((unsigned)__cuda_local_var_190605_9_non_const_row_ind) * (gridDim.x)) * 32U) + ((blockIdx.x) * 32U)));
 # 39 "main.cu"
-__cuda_local_var_190607_9_non_const_entry_ind = ((int)(((((unsigned)__cuda_local_var_190606_9_non_const_row_ind) * (gridDim.x)) * 32U) + ((blockIdx.x) * 32U)));
-# 40 "main.cu"
-__cuda_local_var_190608_9_non_const_entry_ind_bit = ((int)((((unsigned)__cuda_local_var_190606_9_non_const_row_ind) * (gridDim.x)) + (blockIdx.x)));
-# 49 "main.cu"
+__cuda_local_var_190607_9_non_const_entry_ind_bit = ((int)((((unsigned)__cuda_local_var_190605_9_non_const_row_ind) * (gridDim.x)) + (blockIdx.x)));
+# 48 "main.cu"
 ((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E27spilled_row_hash_table_smem)[(threadIdx.x)]) = 0;
-# 50 "main.cu"
+# 49 "main.cu"
 ((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E35spilled_row_hash_table_reverse_smem)[(threadIdx.x)]) = (-1);
-# 51 "main.cu"
+# 50 "main.cu"
 {
-# 51 "main.cu"
+# 50 "main.cu"
  int i;
-# 51 "main.cu"
+# 50 "main.cu"
 i = 0;
-# 51 "main.cu"
+# 50 "main.cu"
 for (; (i < 32); i++)
-# 52 "main.cu"
+# 51 "main.cu"
 {
+# 52 "main.cu"
+((((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E12d_dense_smem)[(threadIdx.x)]))[i]) = (d_dense[(__cuda_local_var_190606_9_non_const_entry_ind + i)]);
 # 53 "main.cu"
-((((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E12d_dense_smem)[(threadIdx.x)]))[i]) = (d_dense[(__cuda_local_var_190607_9_non_const_entry_ind + i)]);
-# 54 "main.cu"
 } }
-# 57 "main.cu"
+# 56 "main.cu"
 if ((threadIdx.x) == 0U)
+# 57 "main.cu"
+{
 # 58 "main.cu"
 {
+# 58 "main.cu"
+ int i;
+# 58 "main.cu"
+i = 0;
+# 58 "main.cu"
+for (; (i < 8); i++)
 # 59 "main.cu"
 {
-# 59 "main.cu"
- int i;
-# 59 "main.cu"
-i = 0;
-# 59 "main.cu"
-for (; (i < 8); i++)
 # 60 "main.cu"
+((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E9row_group)[i]) = 0;
+# 61 "main.cu"
 {
 # 61 "main.cu"
-((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E9row_group)[i]) = 0;
-# 62 "main.cu"
-{
-# 62 "main.cu"
  int j;
-# 62 "main.cu"
+# 61 "main.cu"
 j = 0;
-# 62 "main.cu"
+# 61 "main.cu"
 for (; (j < 32); j++)
-# 63 "main.cu"
+# 62 "main.cu"
 {
-# 64 "main.cu"
+# 63 "main.cu"
 ((((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E17group_ele_row_idx)[i]))[j]) = (-1);
+# 64 "main.cu"
+} }
 # 65 "main.cu"
 } }
 # 66 "main.cu"
-} }
-# 67 "main.cu"
 }
-# 70 "main.cu"
-__cuda_local_var_190638_9_non_const_group_idx = 0;
-# 73 "main.cu"
-__cuda_local_var_190641_17_non_const_expected = ((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E9row_group)[__cuda_local_var_190638_9_non_const_group_idx]);
-# 75 "main.cu"
-__cuda_local_var_190643_17_non_const_or_result = (((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E9row_group)[__cuda_local_var_190638_9_non_const_group_idx]) | (MatB_bit[__cuda_local_var_190608_9_non_const_entry_ind_bit]));
-# 77 "main.cu"
-__cuda_local_var_190645_17_non_const_old_value = (_ZN34_INTERNAL_12_main_cpp1_ii_27d4eacd9atomicCASEPiii(((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E9row_group) + __cuda_local_var_190638_9_non_const_group_idx), __cuda_local_var_190641_17_non_const_expected, __cuda_local_var_190643_17_non_const_or_result));
-# 80 "main.cu"
-while (__cuda_local_var_190641_17_non_const_expected != __cuda_local_var_190645_17_non_const_old_value)
-# 80 "main.cu"
+# 69 "main.cu"
+__cuda_local_var_190637_9_non_const_group_idx = 0;
+# 72 "main.cu"
+__cuda_local_var_190640_17_non_const_expected = ((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E9row_group)[__cuda_local_var_190637_9_non_const_group_idx]);
+# 74 "main.cu"
+__cuda_local_var_190642_17_non_const_or_result = (((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E9row_group)[__cuda_local_var_190637_9_non_const_group_idx]) | (MatB_bit[__cuda_local_var_190607_9_non_const_entry_ind_bit]));
+# 76 "main.cu"
+__cuda_local_var_190644_17_non_const_old_value = (_ZN34_INTERNAL_12_main_cpp1_ii_27d4eacd9atomicCASEPiii(((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E9row_group) + __cuda_local_var_190637_9_non_const_group_idx), __cuda_local_var_190640_17_non_const_expected, __cuda_local_var_190642_17_non_const_or_result));
+# 79 "main.cu"
+while (__cuda_local_var_190640_17_non_const_expected != __cuda_local_var_190644_17_non_const_old_value)
+# 79 "main.cu"
 {
-# 82 "main.cu"
-__cuda_local_var_190639_17_non_const_and_result = (((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E9row_group)[__cuda_local_var_190638_9_non_const_group_idx]) & (MatB_bit[__cuda_local_var_190608_9_non_const_entry_ind_bit]));
-# 84 "main.cu"
-while (__cuda_local_var_190639_17_non_const_and_result != 0)
-# 84 "main.cu"
+# 81 "main.cu"
+__cuda_local_var_190638_17_non_const_and_result = (((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E9row_group)[__cuda_local_var_190637_9_non_const_group_idx]) & (MatB_bit[__cuda_local_var_190607_9_non_const_entry_ind_bit]));
+# 83 "main.cu"
+while (__cuda_local_var_190638_17_non_const_and_result != 0)
+# 83 "main.cu"
 {
+# 84 "main.cu"
+__cuda_local_var_190637_9_non_const_group_idx++;
 # 85 "main.cu"
-__cuda_local_var_190638_9_non_const_group_idx++;
+if (__cuda_local_var_190637_9_non_const_group_idx >= 8)
 # 86 "main.cu"
-if (__cuda_local_var_190638_9_non_const_group_idx >= 8)
-# 87 "main.cu"
 {
-# 89 "main.cu"
- int __cuda_local_var_190657_21_non_const_spilled_row_hash_key;
 # 88 "main.cu"
-(group_id[__cuda_local_var_190608_9_non_const_entry_ind_bit]) = (-1);
+ int __cuda_local_var_190656_21_non_const_spilled_row_hash_key;
+# 87 "main.cu"
+(group_id[__cuda_local_var_190607_9_non_const_entry_ind_bit]) = (-1);
+# 88 "main.cu"
+__cuda_local_var_190656_21_non_const_spilled_row_hash_key = (_ZN34_INTERNAL_12_main_cpp1_ii_27d4eacd9atomicAddEPii((spilled_row_cnt + __cuda_local_var_190604_9_non_const_bid), 1));
 # 89 "main.cu"
-__cuda_local_var_190657_21_non_const_spilled_row_hash_key = (_ZN34_INTERNAL_12_main_cpp1_ii_27d4eacd9atomicAddEPii((spilled_row_cnt + __cuda_local_var_190604_9_non_const_bid), 1));
+((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E27spilled_row_hash_table_smem)[__cuda_local_var_190656_21_non_const_spilled_row_hash_key]) = ((int)(threadIdx.x));
 # 90 "main.cu"
-((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E27spilled_row_hash_table_smem)[__cuda_local_var_190657_21_non_const_spilled_row_hash_key]) = ((int)(threadIdx.x));
-# 91 "main.cu"
 {
-# 91 "main.cu"
+# 90 "main.cu"
  int j;
-# 91 "main.cu"
+# 90 "main.cu"
 j = 0;
-# 91 "main.cu"
+# 90 "main.cu"
 for (; (j < 32); j++)
+# 91 "main.cu"
+{
 # 92 "main.cu"
-{
-# 93 "main.cu"
 if (((((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E12d_dense_smem)[(threadIdx.x)]))[j]) != (0.0F))
+# 93 "main.cu"
+{
 # 94 "main.cu"
-{
-# 95 "main.cu"
 _ZN34_INTERNAL_12_main_cpp1_ii_27d4eacd9atomicAddEPii((spilled_nnz + __cuda_local_var_190604_9_non_const_bid), 1);
+# 95 "main.cu"
+}
 # 96 "main.cu"
-}
+} }
 # 97 "main.cu"
-} }
-# 98 "main.cu"
 goto __T0;
+# 98 "main.cu"
+}
 # 99 "main.cu"
-}
+__cuda_local_var_190638_17_non_const_and_result = (((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E9row_group)[__cuda_local_var_190637_9_non_const_group_idx]) & (MatB_bit[__cuda_local_var_190607_9_non_const_entry_ind_bit]));
 # 100 "main.cu"
-__cuda_local_var_190639_17_non_const_and_result = (((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E9row_group)[__cuda_local_var_190638_9_non_const_group_idx]) & (MatB_bit[__cuda_local_var_190608_9_non_const_entry_ind_bit]));
-# 101 "main.cu"
 } __T0:;
+# 101 "main.cu"
+if (__cuda_local_var_190637_9_non_const_group_idx >= 8)
 # 102 "main.cu"
-if (__cuda_local_var_190638_9_non_const_group_idx >= 8)
+{
 # 103 "main.cu"
-{
-# 104 "main.cu"
 goto __T1;
+# 104 "main.cu"
+}
 # 105 "main.cu"
-}
-# 106 "main.cu"
-__cuda_local_var_190641_17_non_const_expected = ((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E9row_group)[__cuda_local_var_190638_9_non_const_group_idx]);
+__cuda_local_var_190640_17_non_const_expected = ((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E9row_group)[__cuda_local_var_190637_9_non_const_group_idx]);
+# 107 "main.cu"
+__cuda_local_var_190642_17_non_const_or_result = (((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E9row_group)[__cuda_local_var_190637_9_non_const_group_idx]) | (MatB_bit[__cuda_local_var_190607_9_non_const_entry_ind_bit]));
 # 108 "main.cu"
-__cuda_local_var_190643_17_non_const_or_result = (((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E9row_group)[__cuda_local_var_190638_9_non_const_group_idx]) | (MatB_bit[__cuda_local_var_190608_9_non_const_entry_ind_bit]));
+__cuda_local_var_190644_17_non_const_old_value = (_ZN34_INTERNAL_12_main_cpp1_ii_27d4eacd9atomicCASEPiii(((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E9row_group) + __cuda_local_var_190637_9_non_const_group_idx), __cuda_local_var_190640_17_non_const_expected, __cuda_local_var_190642_17_non_const_or_result));
 # 109 "main.cu"
-__cuda_local_var_190645_17_non_const_old_value = (_ZN34_INTERNAL_12_main_cpp1_ii_27d4eacd9atomicCASEPiii(((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E9row_group) + __cuda_local_var_190638_9_non_const_group_idx), __cuda_local_var_190641_17_non_const_expected, __cuda_local_var_190643_17_non_const_or_result));
-# 110 "main.cu"
-(group_id[__cuda_local_var_190608_9_non_const_entry_ind_bit]) = __cuda_local_var_190638_9_non_const_group_idx;
-# 112 "main.cu"
+(group_id[__cuda_local_var_190607_9_non_const_entry_ind_bit]) = __cuda_local_var_190637_9_non_const_group_idx;
+# 111 "main.cu"
 } __T1:;
-# 114 "main.cu"
+# 113 "main.cu"
 {
-# 114 "main.cu"
+# 113 "main.cu"
  int i;
-# 114 "main.cu"
+# 113 "main.cu"
 i = 0;
-# 114 "main.cu"
+# 113 "main.cu"
 for (; (i < 32); i++)
+# 113 "main.cu"
+{
+# 114 "main.cu"
+if ((((MatB_bit[__cuda_local_var_190607_9_non_const_entry_ind_bit]) >> i) & 1) == 1)
 # 114 "main.cu"
 {
 # 115 "main.cu"
-if ((((MatB_bit[__cuda_local_var_190608_9_non_const_entry_ind_bit]) >> i) & 1) == 1)
-# 115 "main.cu"
-{
+((((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E17group_ele_row_idx)[__cuda_local_var_190637_9_non_const_group_idx]))[i]) = ((int)(threadIdx.x));
 # 116 "main.cu"
-((((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E17group_ele_row_idx)[__cuda_local_var_190638_9_non_const_group_idx]))[i]) = ((int)(threadIdx.x));
-# 117 "main.cu"
 }
-# 118 "main.cu"
+# 117 "main.cu"
 } }
-# 120 "main.cu"
+# 119 "main.cu"
 __syncthreads();
-# 122 "main.cu"
+# 121 "main.cu"
 if ((threadIdx.x) == 0U)
+# 122 "main.cu"
+{
 # 123 "main.cu"
+ int __cuda_local_var_190691_13_non_const_spilled_row;
+# 125 "main.cu"
 {
-# 126 "main.cu"
- int __cuda_local_var_190694_13_non_const_spilled_row;
-# 128 "main.cu"
-{
-# 128 "main.cu"
+# 125 "main.cu"
  int i;
-# 128 "main.cu"
+# 125 "main.cu"
 i = 0;
-# 128 "main.cu"
+# 125 "main.cu"
 for (; (i < (spilled_row_cnt[__cuda_local_var_190604_9_non_const_bid])); i++)
+# 126 "main.cu"
+{
+# 127 "main.cu"
+__cuda_local_var_190691_13_non_const_spilled_row = ((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E27spilled_row_hash_table_smem)[i]);
+# 128 "main.cu"
+((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E35spilled_row_hash_table_reverse_smem)[__cuda_local_var_190691_13_non_const_spilled_row]) = i;
 # 129 "main.cu"
-{
-# 130 "main.cu"
-__cuda_local_var_190694_13_non_const_spilled_row = ((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E27spilled_row_hash_table_smem)[i]);
-# 131 "main.cu"
-((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E35spilled_row_hash_table_reverse_smem)[__cuda_local_var_190694_13_non_const_spilled_row]) = i;
-# 132 "main.cu"
 } }
-# 138 "main.cu"
+# 135 "main.cu"
 printf(((const char *)"bid: %d, nnz: %d\n"), __cuda_local_var_190604_9_non_const_bid, (spilled_nnz[__cuda_local_var_190604_9_non_const_bid]));
-# 141 "main.cu"
+# 138 "main.cu"
 {
-# 141 "main.cu"
+# 138 "main.cu"
  int i;
-# 141 "main.cu"
+# 138 "main.cu"
 i = 0;
-# 141 "main.cu"
+# 138 "main.cu"
 for (; (i < 8); i++)
+# 139 "main.cu"
+{
+# 140 "main.cu"
+(d_group_mask[((8 * __cuda_local_var_190604_9_non_const_bid) + i)]) = ((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E9row_group)[i]);
+# 141 "main.cu"
+} }
+# 142 "main.cu"
+{
+# 142 "main.cu"
+ int i;
+# 142 "main.cu"
+i = 0;
+# 142 "main.cu"
+for (; (i < 32); i++)
 # 142 "main.cu"
 {
 # 143 "main.cu"
-(d_group_mask[((8 * __cuda_local_var_190604_9_non_const_bid) + i)]) = ((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E9row_group)[i]);
-# 144 "main.cu"
+(d_group_ele_row_ind[((((8 * __cuda_local_var_190604_9_non_const_bid) + __cuda_local_var_190637_9_non_const_group_idx) * 32) + i)]) = ((((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E17group_ele_row_idx)[__cuda_local_var_190637_9_non_const_group_idx]))[i]);
+# 145 "main.cu"
+(d_group_ele_row_val[((((8 * __cuda_local_var_190604_9_non_const_bid) + __cuda_local_var_190637_9_non_const_group_idx) * 32) + i)]) = ((((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E12d_dense_smem)[((((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E17group_ele_row_idx)[__cuda_local_var_190637_9_non_const_group_idx]))[i])]))[i]);
+# 147 "main.cu"
 } }
-# 145 "main.cu"
-{
-# 145 "main.cu"
- int i;
-# 145 "main.cu"
-i = 0;
-# 145 "main.cu"
-for (; (i < 32); i++)
-# 145 "main.cu"
-{
-# 146 "main.cu"
-(d_group_ele_row_ind[((((8 * __cuda_local_var_190604_9_non_const_bid) + __cuda_local_var_190638_9_non_const_group_idx) * 32) + i)]) = ((((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E17group_ele_row_idx)[__cuda_local_var_190638_9_non_const_group_idx]))[i]);
 # 148 "main.cu"
-(d_group_ele_row_val[((((8 * __cuda_local_var_190604_9_non_const_bid) + __cuda_local_var_190638_9_non_const_group_idx) * 32) + i)]) = ((((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E12d_dense_smem)[((((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E17group_ele_row_idx)[__cuda_local_var_190638_9_non_const_group_idx]))[i])]))[i]);
+(group_id[__cuda_local_var_190607_9_non_const_entry_ind_bit]) = __cuda_local_var_190637_9_non_const_group_idx;
+# 149 "main.cu"
+}
 # 150 "main.cu"
-} }
-# 151 "main.cu"
-(group_id[__cuda_local_var_190608_9_non_const_entry_ind_bit]) = __cuda_local_var_190638_9_non_const_group_idx;
-# 152 "main.cu"
-}
-# 153 "main.cu"
 __syncthreads();
-# 155 "main.cu"
-(spilled_row_hash_table_reverse_gmem[(((unsigned)(__cuda_local_var_190604_9_non_const_bid * 64)) + (threadIdx.x))]) = ((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E35spilled_row_hash_table_reverse_smem)[(threadIdx.x)]);
-# 157 "main.cu"
-(spilled_row_hash_table_gmem[(((unsigned)(__cuda_local_var_190604_9_non_const_bid * 64)) + (threadIdx.x))]) = ((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E27spilled_row_hash_table_smem)[(threadIdx.x)]); 
-# 161 "main.cu"
+# 152 "main.cu"
+(spilled_row_hash_table_reverse_gmem[(((unsigned)(__cuda_local_var_190604_9_non_const_bid * 256)) + (threadIdx.x))]) = ((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E35spilled_row_hash_table_reverse_smem)[(threadIdx.x)]);
+# 154 "main.cu"
+(spilled_row_hash_table_gmem[(((unsigned)(__cuda_local_var_190604_9_non_const_bid * 256)) + (threadIdx.x))]) = ((_ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_E27spilled_row_hash_table_smem)[(threadIdx.x)]); 
+# 158 "main.cu"
 }}
-# 165 "main.cu"
+# 162 "main.cu"
 __global__ __var_used__ void _Z20generate_spilled_csrIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_S3_S2_S2_S2_S2_(
-# 165 "main.cu"
+# 162 "main.cu"
 int *MatB_bit, 
-# 166 "main.cu"
+# 163 "main.cu"
 int *d_group_mask, 
-# 167 "main.cu"
+# 164 "main.cu"
 int *d_group_ele_row_ind, 
-# 168 "main.cu"
+# 165 "main.cu"
 float *d_group_ele_row_val, 
-# 169 "main.cu"
+# 166 "main.cu"
 float *d_dense, 
-# 170 "main.cu"
+# 167 "main.cu"
 int *group_id, 
+# 168 "main.cu"
+int *spilled_row_cnt, 
+# 169 "main.cu"
+int *spilled_nnz, 
+# 170 "main.cu"
+int *spilled_row_cnt_offset, 
 # 171 "main.cu"
-int *spilled_row_cnt, 
+int *spilled_nnz_offset, 
 # 172 "main.cu"
-int *spilled_nnz, 
+float *tile_spilled_csrVal, 
 # 173 "main.cu"
-int *spilled_row_cnt_offset, 
+int *tile_spilled_csrColInd, 
 # 174 "main.cu"
-int *spilled_nnz_offset, 
+int *tile_spilled_csrRowPtr, 
 # 175 "main.cu"
-float *tile_spilled_csrVal, 
-# 176 "main.cu"
-int *tile_spilled_csrColInd, 
-# 177 "main.cu"
-int *tile_spilled_csrRowPtr, 
-# 178 "main.cu"
 int *spilled_row_hash_table_gmem, 
-# 179 "main.cu"
+# 176 "main.cu"
 int *spilled_row_hash_table_reverse_gmem){
+# 178 "main.cu"
+{
+# 180 "main.cu"
+ int __cuda_local_var_190748_9_non_const_bid;
 # 181 "main.cu"
-{
-# 183 "main.cu"
- int __cuda_local_var_190751_9_non_const_bid;
-# 184 "main.cu"
- int __cuda_local_var_190752_9_non_const_tid;
-# 185 "main.cu"
- int __cuda_local_var_190753_9_non_const_row_ind;
-# 186 "main.cu"
- int __cuda_local_var_190754_9_non_const_entry_ind;
+ int __cuda_local_var_190749_9_non_const_row_ind;
+# 182 "main.cu"
+ int __cuda_local_var_190750_9_non_const_entry_ind;
+# 180 "main.cu"
+__cuda_local_var_190748_9_non_const_bid = ((int)(((blockIdx.y) * (gridDim.x)) + (blockIdx.x)));
+# 181 "main.cu"
+__cuda_local_var_190749_9_non_const_row_ind = ((int)(((blockDim.x) * (blockIdx.y)) + (threadIdx.x)));
+# 182 "main.cu"
+__cuda_local_var_190750_9_non_const_entry_ind = ((int)(((((unsigned)__cuda_local_var_190749_9_non_const_row_ind) * (gridDim.x)) * 32U) + ((blockIdx.x) * 32U)));
 # 187 "main.cu"
- int __cuda_local_var_190755_9_non_const_entry_ind_bit;
-# 183 "main.cu"
-__cuda_local_var_190751_9_non_const_bid = ((int)(((blockIdx.y) * (gridDim.x)) + (blockIdx.x)));
-# 184 "main.cu"
-__cuda_local_var_190752_9_non_const_tid = ((int)((((unsigned)__cuda_local_var_190751_9_non_const_bid) * (blockDim.x)) + (threadIdx.x)));
-# 185 "main.cu"
-__cuda_local_var_190753_9_non_const_row_ind = ((int)(((blockDim.x) * (blockIdx.y)) + (threadIdx.x)));
-# 186 "main.cu"
-__cuda_local_var_190754_9_non_const_entry_ind = ((int)(((((unsigned)__cuda_local_var_190753_9_non_const_row_ind) * (gridDim.x)) * 32U) + ((blockIdx.x) * 32U)));
-# 187 "main.cu"
-__cuda_local_var_190755_9_non_const_entry_ind_bit = ((int)((((unsigned)__cuda_local_var_190753_9_non_const_row_ind) * (gridDim.x)) + (blockIdx.x)));
-# 191 "main.cu"
 {
-# 191 "main.cu"
+# 187 "main.cu"
  int i;
-# 191 "main.cu"
+# 187 "main.cu"
 i = 0;
-# 191 "main.cu"
+# 187 "main.cu"
 for (; (i < 32); i++)
-# 192 "main.cu"
+# 188 "main.cu"
 {
+# 189 "main.cu"
+((((_ZZ20generate_spilled_csrIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_S3_S2_S2_S2_S2_E12d_dense_smem)[(threadIdx.x)]))[i]) = (d_dense[(__cuda_local_var_190750_9_non_const_entry_ind + i)]);
+# 190 "main.cu"
+} }
+# 191 "main.cu"
+((_ZZ20generate_spilled_csrIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_S3_S2_S2_S2_S2_E27spilled_row_hash_table_smem)[(threadIdx.x)]) = (spilled_row_hash_table_gmem[(((unsigned)(__cuda_local_var_190748_9_non_const_bid * 256)) + (threadIdx.x))]);
 # 193 "main.cu"
-((((_ZZ20generate_spilled_csrIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_S3_S2_S2_S2_S2_E12d_dense_smem)[(threadIdx.x)]))[i]) = (d_dense[(__cuda_local_var_190754_9_non_const_entry_ind + i)]);
-# 194 "main.cu"
-} }
-# 195 "main.cu"
-((_ZZ20generate_spilled_csrIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_S3_S2_S2_S2_S2_E27spilled_row_hash_table_smem)[(threadIdx.x)]) = (spilled_row_hash_table_gmem[(((unsigned)(__cuda_local_var_190751_9_non_const_bid * 64)) + (threadIdx.x))]);
-# 197 "main.cu"
 if ((threadIdx.x) == 0U)
-# 198 "main.cu"
+# 194 "main.cu"
 {
-# 199 "main.cu"
- int __cuda_local_var_190767_13_non_const_nz_ind_total;
+# 195 "main.cu"
+ int __cuda_local_var_190763_13_non_const_nz_ind_total;
+# 196 "main.cu"
+ int __cuda_local_var_190764_13_non_const_row_ind_total;
+# 197 "main.cu"
+ int __cuda_local_var_190765_13_non_const_spilled_row;
+# 195 "main.cu"
+__cuda_local_var_190763_13_non_const_nz_ind_total = 0;
+# 196 "main.cu"
+__cuda_local_var_190764_13_non_const_row_ind_total = 0;
 # 200 "main.cu"
- int __cuda_local_var_190768_13_non_const_row_ind_total;
+{
+# 200 "main.cu"
+ int i;
+# 200 "main.cu"
+i = 0;
+# 200 "main.cu"
+for (; (i < (spilled_row_cnt[__cuda_local_var_190748_9_non_const_bid])); i++)
 # 201 "main.cu"
- int __cuda_local_var_190769_13_non_const_spilled_row;
-# 199 "main.cu"
-__cuda_local_var_190767_13_non_const_nz_ind_total = 0;
-# 200 "main.cu"
-__cuda_local_var_190768_13_non_const_row_ind_total = 0;
-# 204 "main.cu"
 {
-# 204 "main.cu"
- int i;
-# 204 "main.cu"
-i = 0;
-# 204 "main.cu"
-for (; (i < (spilled_row_cnt[__cuda_local_var_190751_9_non_const_bid])); i++)
-# 205 "main.cu"
+# 202 "main.cu"
+__cuda_local_var_190765_13_non_const_spilled_row = ((_ZZ20generate_spilled_csrIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_S3_S2_S2_S2_S2_E27spilled_row_hash_table_smem)[i]);
+# 203 "main.cu"
 {
-# 206 "main.cu"
-__cuda_local_var_190769_13_non_const_spilled_row = ((_ZZ20generate_spilled_csrIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_S3_S2_S2_S2_S2_E27spilled_row_hash_table_smem)[i]);
-# 207 "main.cu"
-{
-# 207 "main.cu"
+# 203 "main.cu"
  int j;
-# 207 "main.cu"
+# 203 "main.cu"
 j = 0;
-# 207 "main.cu"
+# 203 "main.cu"
 for (; (j < 32); j++)
+# 204 "main.cu"
+{
+# 205 "main.cu"
+if (((((_ZZ20generate_spilled_csrIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_S3_S2_S2_S2_S2_E12d_dense_smem)[__cuda_local_var_190765_13_non_const_spilled_row]))[j]) != (0.0F))
+# 206 "main.cu"
+{
+# 207 "main.cu"
+(tile_spilled_csrColInd[((spilled_nnz_offset[__cuda_local_var_190748_9_non_const_bid]) + __cuda_local_var_190763_13_non_const_nz_ind_total)]) = j;
 # 208 "main.cu"
-{
+(tile_spilled_csrVal[((spilled_nnz_offset[__cuda_local_var_190748_9_non_const_bid]) + __cuda_local_var_190763_13_non_const_nz_ind_total)]) = ((((_ZZ20generate_spilled_csrIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_S3_S2_S2_S2_S2_E12d_dense_smem)[__cuda_local_var_190765_13_non_const_spilled_row]))[j]);
 # 209 "main.cu"
-if (((((_ZZ20generate_spilled_csrIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_S3_S2_S2_S2_S2_E12d_dense_smem)[__cuda_local_var_190769_13_non_const_spilled_row]))[j]) != (0.0F))
+__cuda_local_var_190763_13_non_const_nz_ind_total++;
 # 210 "main.cu"
-{
-# 211 "main.cu"
-(tile_spilled_csrColInd[((spilled_nnz_offset[__cuda_local_var_190751_9_non_const_bid]) + __cuda_local_var_190767_13_non_const_nz_ind_total)]) = j;
-# 212 "main.cu"
-(tile_spilled_csrVal[((spilled_nnz_offset[__cuda_local_var_190751_9_non_const_bid]) + __cuda_local_var_190767_13_non_const_nz_ind_total)]) = ((((_ZZ20generate_spilled_csrIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_S3_S2_S2_S2_S2_E12d_dense_smem)[__cuda_local_var_190769_13_non_const_spilled_row]))[j]);
-# 213 "main.cu"
-__cuda_local_var_190767_13_non_const_nz_ind_total++;
-# 214 "main.cu"
 }
+# 211 "main.cu"
+} }
+# 212 "main.cu"
+(tile_spilled_csrRowPtr[((spilled_row_cnt_offset[__cuda_local_var_190748_9_non_const_bid]) + __cuda_local_var_190764_13_non_const_row_ind_total)]) = __cuda_local_var_190763_13_non_const_nz_ind_total;
+# 213 "main.cu"
+__cuda_local_var_190764_13_non_const_row_ind_total++;
+# 214 "main.cu"
+} }
 # 215 "main.cu"
-} }
-# 216 "main.cu"
-(tile_spilled_csrRowPtr[((spilled_row_cnt_offset[__cuda_local_var_190751_9_non_const_bid]) + __cuda_local_var_190768_13_non_const_row_ind_total)]) = __cuda_local_var_190767_13_non_const_nz_ind_total;
-# 217 "main.cu"
-__cuda_local_var_190768_13_non_const_row_ind_total++;
-# 218 "main.cu"
-} }
-# 219 "main.cu"
 } 
-# 228 "main.cu"
+# 224 "main.cu"
 }}
-# 261 "main.cu"
-__global__ __var_used__ void _Z15bit_wise_spgemmIiEviPfPiS1_S0_PT_S1_S1_S1_S1_S1_S0_S1_S1_S1_(
-# 261 "main.cu"
-int split_k, 
-# 262 "main.cu"
-float *d_csr_values, 
-# 263 "main.cu"
-int *d_csr_offsets, 
-# 264 "main.cu"
-int *d_csr_columns, 
-# 265 "main.cu"
-float *d_group_ele_row_val, 
-# 266 "main.cu"
-int *MatB_bit, 
-# 267 "main.cu"
-int *group_id_gmem, 
-# 268 "main.cu"
-int *spilled_row_cnt, 
-# 269 "main.cu"
-int *spilled_nnz, 
-# 270 "main.cu"
-int *spilled_row_cnt_offset, 
-# 271 "main.cu"
-int *spilled_nnz_offset, 
-# 272 "main.cu"
-float *tile_spilled_csrVal, 
-# 273 "main.cu"
-int *tile_spilled_csrColInd, 
-# 274 "main.cu"
-int *tile_spilled_csrRowPtr, 
-# 275 "main.cu"
-int *spilled_row_hash_table_reverse_gmem){
-# 277 "main.cu"
-{
-# 278 "main.cu"
- int __cuda_local_var_190809_9_non_const_bid;
-# 279 "main.cu"
- int __cuda_local_var_190810_9_non_const_tid;
-# 280 "main.cu"
- int __cuda_local_var_190811_9_non_const_assigned_row_ind;
-# 283 "main.cu"
- int __cuda_local_var_190814_9_non_const_entry_ind_bit;
-# 287 "main.cu"
- int __cuda_local_var_190818_9_non_const_row_ind_in_tile;
-# 287 "main.cu"
- int __cuda_local_var_190818_26_non_const_row_group_id;
-# 287 "main.cu"
- int __cuda_local_var_190818_40_non_const_register_idx;
-# 287 "main.cu"
- int __cuda_local_var_190818_54_non_const_col_ind;
-# 278 "main.cu"
-__cuda_local_var_190809_9_non_const_bid = ((int)(((blockIdx.y) * (gridDim.x)) + (blockIdx.x)));
-# 279 "main.cu"
-__cuda_local_var_190810_9_non_const_tid = ((int)((((unsigned)__cuda_local_var_190809_9_non_const_bid) * (blockDim.x)) + (threadIdx.x)));
-# 280 "main.cu"
-__cuda_local_var_190811_9_non_const_assigned_row_ind = ((int)(((blockIdx.y) * (blockDim.x)) + (threadIdx.x)));
-# 283 "main.cu"
-__cuda_local_var_190814_9_non_const_entry_ind_bit = ((int)((((unsigned)__cuda_local_var_190811_9_non_const_assigned_row_ind) * (gridDim.x)) + (blockIdx.x)));
-# 293 "main.cu"
-{
-# 293 "main.cu"
- int k;
-# 293 "main.cu"
-k = 0;
-# 293 "main.cu"
-for (; (k < 1); k++)
-# 294 "main.cu"
-{
-# 306 "main.cu"
- int __cuda_local_var_190837_13_non_const_tileB_id;
-# 379 "main.cu"
- float __cuda_local_var_190903_15_non_const_group[8];
-# 295 "main.cu"
-{
-# 295 "main.cu"
- int i;
-# 295 "main.cu"
-i = 0;
-# 295 "main.cu"
-for (; (((unsigned)i) < (blockDim.x)); i++)
-# 296 "main.cu"
-{
-# 297 "main.cu"
-{
-# 297 "main.cu"
- int b;
-# 297 "main.cu"
-b = 0;
-# 297 "main.cu"
-for (; (b < 8); b++)
-# 298 "main.cu"
-{
-# 299 "main.cu"
-{
-# 299 "main.cu"
- int j;
-# 299 "main.cu"
-j = 0;
-# 299 "main.cu"
-for (; (j < 8); j++)
-# 300 "main.cu"
-{
-# 301 "main.cu"
-((((((_ZZ15bit_wise_spgemmIiEviPfPiS1_S0_PT_S1_S1_S1_S1_S1_S0_S1_S1_S1_E15group_indicator)[i]))[b]))[j]) = 0;
-# 302 "main.cu"
-} }
-# 303 "main.cu"
-} }
-# 304 "main.cu"
-} }
-# 306 "main.cu"
-__cuda_local_var_190837_13_non_const_tileB_id = ((int)((((unsigned)k) * (gridDim.x)) + (blockIdx.x)));
-# 309 "main.cu"
-{
-# 309 "main.cu"
- int i;
-# 309 "main.cu"
-i = 0;
-# 309 "main.cu"
-for (; (((unsigned)i) < (64U / (blockDim.x))); i++)
-# 310 "main.cu"
-{
-# 311 "main.cu"
- int __cuda_local_var_190842_17_non_const_row_ind;
-# 312 "main.cu"
- int __cuda_local_var_190843_17_non_const_entry;
-# 311 "main.cu"
-__cuda_local_var_190842_17_non_const_row_ind = ((int)((((unsigned)(k * 64)) + (((unsigned)i) * (blockDim.x))) + (threadIdx.x)));
-# 312 "main.cu"
-__cuda_local_var_190843_17_non_const_entry = ((int)((((unsigned)__cuda_local_var_190842_17_non_const_row_ind) * (gridDim.x)) + (blockIdx.x)));
 # 314 "main.cu"
-((_ZZ15bit_wise_spgemmIiEviPfPiS1_S0_PT_S1_S1_S1_S1_S1_S0_S1_S1_S1_E13group_id_smem)[((((unsigned)i) * (blockDim.x)) + (threadIdx.x))]) = (group_id_gmem[__cuda_local_var_190843_17_non_const_entry]);
+__global__ __var_used__ void _Z24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_(
 # 315 "main.cu"
-((_ZZ15bit_wise_spgemmIiEviPfPiS1_S0_PT_S1_S1_S1_S1_S1_S0_S1_S1_S1_E35spilled_row_hash_table_reverse_smem)[((((unsigned)i) * (blockDim.x)) + (threadIdx.x))]) = (spilled_row_hash_table_reverse_gmem[(((((unsigned)i) * (blockDim.x)) + (threadIdx.x)) + ((unsigned)(__cuda_local_var_190837_13_non_const_tileB_id * 64)))]);
+int *MatB_bit, 
+# 316 "main.cu"
+float *dA_dense_gmem, 
 # 317 "main.cu"
-} }
+int *group_id_gmem, 
+# 318 "main.cu"
+int *spilled_row_hash_table_reverse_gmem, 
+# 319 "main.cu"
+float *d_group_ele_row_val, 
+# 320 "main.cu"
+int *spilled_row_cnt_offset, 
 # 321 "main.cu"
-{
-# 321 "main.cu"
- int i;
-# 321 "main.cu"
-i = (d_csr_offsets[__cuda_local_var_190811_9_non_const_assigned_row_ind]);
-# 321 "main.cu"
-for (; (i < (d_csr_offsets[(__cuda_local_var_190811_9_non_const_assigned_row_ind + 1)])); i++)
+int *spilled_nnz_offset, 
 # 322 "main.cu"
-{
+float *tile_spilled_csrVal, 
 # 323 "main.cu"
-if (((d_csr_columns[i]) > (64 * k)) && ((d_csr_columns[i]) < (64 * (k + 1))))
+int *tile_spilled_csrColInd, 
 # 324 "main.cu"
-{
-# 325 "main.cu"
-__cuda_local_var_190818_9_non_const_row_ind_in_tile = ((d_csr_columns[i]) - (64 * k));
-# 327 "main.cu"
-{
-# 327 "main.cu"
- int b;
-# 327 "main.cu"
-b = 0;
-# 327 "main.cu"
-for (; (b < 8); b++)
-# 328 "main.cu"
-{
-# 329 "main.cu"
- int __cuda_local_var_190860_25_non_const_tmp;
-# 330 "main.cu"
- int __cuda_local_var_190861_25_non_const_mv_bit;
-# 329 "main.cu"
-__cuda_local_var_190860_25_non_const_tmp = (__float_as_int((d_csr_values[i])));
-# 330 "main.cu"
-__cuda_local_var_190861_25_non_const_mv_bit = (b + 16);
-# 333 "main.cu"
-if ((((b % 2) + (__cuda_local_var_190818_9_non_const_row_ind_in_tile % 2)) % 2) == 0)
-# 334 "main.cu"
+int *tile_spilled_csrRowPtr){
+# 326 "main.cu"
 {
 # 335 "main.cu"
-__cuda_local_var_190818_26_non_const_row_group_id = ((_ZZ15bit_wise_spgemmIiEviPfPiS1_S0_PT_S1_S1_S1_S1_S1_S0_S1_S1_S1_E13group_id_smem)[__cuda_local_var_190818_9_non_const_row_ind_in_tile]);
+ int __cuda_local_var_190865_9_non_const_row_group_id;
 # 337 "main.cu"
-if (__cuda_local_var_190818_26_non_const_row_group_id != (-1))
+{
+# 337 "main.cu"
+ int k;
+# 337 "main.cu"
+k = 0;
+# 337 "main.cu"
+for (; (k < 4); k++)
 # 338 "main.cu"
 {
 # 339 "main.cu"
- int __cuda_local_var_190870_33_non_const_entry;
-# 339 "main.cu"
-__cuda_local_var_190870_33_non_const_entry = ((int)((((unsigned)((32 * k) + __cuda_local_var_190818_9_non_const_row_ind_in_tile)) * (gridDim.x)) + (blockIdx.x)));
+ int __cuda_local_var_190869_13_non_const_tileA_id;
 # 340 "main.cu"
-_ZN34_INTERNAL_12_main_cpp1_ii_27d4eacd8atomicOrEPii(((((((_ZZ15bit_wise_spgemmIiEviPfPiS1_S0_PT_S1_S1_S1_S1_S1_S0_S1_S1_S1_E15group_indicator)[(threadIdx.x)]))[b])) + __cuda_local_var_190818_26_non_const_row_group_id), (MatB_bit[__cuda_local_var_190870_33_non_const_entry]));
+ int __cuda_local_var_190870_13_non_const_tileB_id;
+# 367 "main.cu"
+ int __cuda_local_var_190897_13_non_const_rowA_ind;
+# 368 "main.cu"
+ int __cuda_local_var_190898_13_non_const_entry;
+# 369 "main.cu"
+ int __cuda_local_var_190899_13_non_const_tmp;
+# 339 "main.cu"
+__cuda_local_var_190869_13_non_const_tileA_id = ((int)(((gridDim.x) * (blockIdx.y)) + ((unsigned)k)));
+# 340 "main.cu"
+__cuda_local_var_190870_13_non_const_tileB_id = ((int)((((unsigned)k) * (gridDim.x)) + (blockIdx.x)));
 # 342 "main.cu"
-}
-# 344 "main.cu"
-else 
-# 344 "main.cu"
+if ((((threadIdx.x) == 0U) && ((threadIdx.y) == 0U)) && ((threadIdx.z) == 0U))
+# 343 "main.cu"
 {
+# 344 "main.cu"
+printf(((const char *)"tileA_id: %d, k: %d\n"), __cuda_local_var_190869_13_non_const_tileA_id, k);
+# 345 "main.cu"
+}
 # 348 "main.cu"
- int __cuda_local_var_190879_33_non_const_row_in_csr;
+if ((((threadIdx.x) == 0U) && ((threadIdx.y) == 0U)) && ((threadIdx.z) < 32U))
+# 349 "main.cu"
+{
+# 350 "main.cu"
+{
+# 350 "main.cu"
+ int i;
+# 350 "main.cu"
+i = 0;
+# 350 "main.cu"
+for (; (i < 8); i++)
 # 351 "main.cu"
- int __cuda_local_var_190882_33_non_const_start_offset;
-# 348 "main.cu"
-__cuda_local_var_190879_33_non_const_row_in_csr = ((_ZZ15bit_wise_spgemmIiEviPfPiS1_S0_PT_S1_S1_S1_S1_S1_S0_S1_S1_S1_E35spilled_row_hash_table_reverse_smem)[__cuda_local_var_190818_9_non_const_row_ind_in_tile]);
+{
 # 352 "main.cu"
-if (__cuda_local_var_190879_33_non_const_row_in_csr == 0)
+((((_ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E5group)[i]))[(threadIdx.z)]) = (d_group_ele_row_val[(((unsigned)(((8 * __cuda_local_var_190870_13_non_const_tileB_id) + i) * 32)) + (threadIdx.z))]);
 # 353 "main.cu"
-{
+} }
 # 354 "main.cu"
-__cuda_local_var_190882_33_non_const_start_offset = 0;
-# 355 "main.cu"
 }
 # 357 "main.cu"
-else 
-# 357 "main.cu"
 {
+# 357 "main.cu"
+ int i;
+# 357 "main.cu"
+i = 0;
+# 357 "main.cu"
+for (; (((unsigned)i) < (256U / (blockDim.x))); i++)
 # 358 "main.cu"
-__cuda_local_var_190882_33_non_const_start_offset = (tile_spilled_csrRowPtr[(((spilled_row_cnt_offset[__cuda_local_var_190837_13_non_const_tileB_id]) + __cuda_local_var_190879_33_non_const_row_in_csr) - 1)]);
+{
 # 359 "main.cu"
-}
+ int __cuda_local_var_190889_17_non_const_rowB_ind;
 # 360 "main.cu"
-{
+ int __cuda_local_var_190890_17_non_const_entry;
+# 359 "main.cu"
+__cuda_local_var_190889_17_non_const_rowB_ind = ((int)((((unsigned)(k * 256)) + (((unsigned)i) * (blockDim.x))) + (threadIdx.x)));
 # 360 "main.cu"
- int j;
-# 360 "main.cu"
-j = __cuda_local_var_190882_33_non_const_start_offset;
-# 360 "main.cu"
-for (; (j < (tile_spilled_csrRowPtr[((spilled_row_cnt_offset[__cuda_local_var_190837_13_non_const_tileB_id]) + __cuda_local_var_190879_33_non_const_row_in_csr)])); j++)
-# 361 "main.cu"
-{
+__cuda_local_var_190890_17_non_const_entry = ((int)((((unsigned)__cuda_local_var_190889_17_non_const_rowB_ind) * (gridDim.x)) + (blockIdx.x)));
 # 362 "main.cu"
-__cuda_local_var_190818_54_non_const_col_ind = (tile_spilled_csrColInd[((spilled_nnz_offset[__cuda_local_var_190837_13_non_const_tileB_id]) + j)]);
-# 364 "main.cu"
-((((((_ZZ15bit_wise_spgemmIiEviPfPiS1_S0_PT_S1_S1_S1_S1_S1_S0_S1_S1_S1_E6result)[(threadIdx.x)]))[b]))[__cuda_local_var_190818_54_non_const_col_ind]) += (tile_spilled_csrVal[((spilled_nnz_offset[__cuda_local_var_190837_13_non_const_tileB_id]) + j)]);
+((_ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E13group_id_smem)[((((unsigned)i) * (blockDim.x)) + (threadIdx.x))]) = (group_id_gmem[__cuda_local_var_190890_17_non_const_entry]);
+# 363 "main.cu"
+((_ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E35spilled_row_hash_table_reverse_smem)[((((unsigned)i) * (blockDim.x)) + (threadIdx.x))]) = (spilled_row_hash_table_reverse_gmem[(((((unsigned)i) * (blockDim.x)) + (threadIdx.x)) + ((unsigned)(__cuda_local_var_190870_13_non_const_tileB_id * 256)))]);
 # 365 "main.cu"
 } }
-# 366 "main.cu"
-}
 # 367 "main.cu"
-}
+__cuda_local_var_190897_13_non_const_rowA_ind = ((int)(((blockIdx.y) * (blockDim.x)) + (threadIdx.x)));
 # 368 "main.cu"
-} }
+__cuda_local_var_190898_13_non_const_entry = ((int)(((unsigned)((__cuda_local_var_190897_13_non_const_rowA_ind * 1024) + (k * 256))) + (threadIdx.z)));
 # 369 "main.cu"
+__cuda_local_var_190899_13_non_const_tmp = (((__float_as_int((dA_dense_gmem[__cuda_local_var_190898_13_non_const_entry]))) >> (threadIdx.y)) & 1);
+# 371 "main.cu"
+if (((((threadIdx.y) % 2U) + ((threadIdx.z) % 2U)) % 2U) == 0U)
+# 372 "main.cu"
+{
+# 373 "main.cu"
+__cuda_local_var_190865_9_non_const_row_group_id = ((_ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E13group_id_smem)[(threadIdx.z)]);
+# 374 "main.cu"
+if (__cuda_local_var_190865_9_non_const_row_group_id != (-1))
+# 375 "main.cu"
+{
+# 376 "main.cu"
+ int __cuda_local_var_190906_21_non_const_entry;
+# 376 "main.cu"
+__cuda_local_var_190906_21_non_const_entry = ((int)(((((unsigned)(32 * k)) + (threadIdx.z)) * (gridDim.x)) + (blockIdx.x)));
+# 377 "main.cu"
+_ZN34_INTERNAL_12_main_cpp1_ii_27d4eacd8atomicOrEPii(((((((_ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E15group_indicator)[(threadIdx.x)]))[(threadIdx.y)])) + __cuda_local_var_190865_9_non_const_row_group_id), (MatB_bit[__cuda_local_var_190906_21_non_const_entry]));
+# 378 "main.cu"
 }
-# 370 "main.cu"
-} }
-# 382 "main.cu"
+# 380 "main.cu"
+else 
+# 380 "main.cu"
 {
-# 382 "main.cu"
- int i;
-# 382 "main.cu"
-i = 0;
-# 382 "main.cu"
-
-#pragma unroll 2147483647
-for (; (i < 8); i++)
 # 383 "main.cu"
-{
+ int __cuda_local_var_190913_21_non_const_row_in_csr;
 # 384 "main.cu"
-((__cuda_local_var_190903_15_non_const_group)[(1 << i)]) = (d_group_ele_row_val[(((unsigned)(((8 * __cuda_local_var_190837_13_non_const_tileB_id) + i) * 32)) + (threadIdx.x))]);
+ int __cuda_local_var_190914_21_non_const_start_offset;
+# 383 "main.cu"
+__cuda_local_var_190913_21_non_const_row_in_csr = ((_ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E35spilled_row_hash_table_reverse_smem)[(threadIdx.z)]);
 # 385 "main.cu"
-} }
-# 392 "main.cu"
+if (__cuda_local_var_190913_21_non_const_row_in_csr == 0)
+# 386 "main.cu"
 {
+# 387 "main.cu"
+__cuda_local_var_190914_21_non_const_start_offset = 0;
+# 388 "main.cu"
+}
+# 390 "main.cu"
+else 
+# 390 "main.cu"
+{
+# 391 "main.cu"
+__cuda_local_var_190914_21_non_const_start_offset = (tile_spilled_csrRowPtr[(((spilled_row_cnt_offset[__cuda_local_var_190870_13_non_const_tileB_id]) + __cuda_local_var_190913_21_non_const_row_in_csr) - 1)]);
 # 392 "main.cu"
- int i;
-# 392 "main.cu"
-i = 0;
-# 392 "main.cu"
-for (; (((unsigned)i) < (blockDim.x)); i++)
+}
 # 393 "main.cu"
 {
-# 394 "main.cu"
-{
-# 394 "main.cu"
- int b;
-# 394 "main.cu"
-b = 0;
-# 394 "main.cu"
-for (; (b < 8); b++)
-# 395 "main.cu"
-{
-# 396 "main.cu"
-{
-# 396 "main.cu"
+# 393 "main.cu"
  int j;
+# 393 "main.cu"
+j = __cuda_local_var_190914_21_non_const_start_offset;
+# 393 "main.cu"
+for (; (j < (tile_spilled_csrRowPtr[((spilled_row_cnt_offset[__cuda_local_var_190870_13_non_const_tileB_id]) + __cuda_local_var_190913_21_non_const_row_in_csr)])); j++)
+# 394 "main.cu"
+{
+# 395 "main.cu"
+ int __cuda_local_var_190925_25_non_const_col_ind;
+# 395 "main.cu"
+__cuda_local_var_190925_25_non_const_col_ind = (tile_spilled_csrColInd[((spilled_nnz_offset[__cuda_local_var_190870_13_non_const_tileB_id]) + j)]);
 # 396 "main.cu"
-j = 0;
-# 396 "main.cu"
-for (; (j < 8); j++)
+((((((_ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E6result)[(threadIdx.x)]))[(threadIdx.y)]))[__cuda_local_var_190925_25_non_const_col_ind]) += (tile_spilled_csrVal[((spilled_nnz_offset[__cuda_local_var_190870_13_non_const_tileB_id]) + j)]);
 # 397 "main.cu"
-{
-# 399 "main.cu"
-__cuda_local_var_190818_40_non_const_register_idx = ((((((((_ZZ15bit_wise_spgemmIiEviPfPiS1_S0_PT_S1_S1_S1_S1_S1_S0_S1_S1_S1_E15group_indicator)[i]))[b]))[j]) >> (threadIdx.x)) & 1);
-# 400 "main.cu"
-if (__cuda_local_var_190818_40_non_const_register_idx == 1)
-# 401 "main.cu"
-{
-# 402 "main.cu"
-((((((_ZZ15bit_wise_spgemmIiEviPfPiS1_S0_PT_S1_S1_S1_S1_S1_S0_S1_S1_S1_E6result)[i]))[b]))[(threadIdx.x)]) += ((__cuda_local_var_190903_15_non_const_group)[(1 << j)]);
-# 403 "main.cu"
+} }
+# 398 "main.cu"
 }
+# 399 "main.cu"
+}
+# 401 "main.cu"
+if ((threadIdx.z) < 32U)
+# 402 "main.cu"
+{
+# 403 "main.cu"
+{
+# 403 "main.cu"
+ int i;
+# 403 "main.cu"
+i = 0;
+# 403 "main.cu"
+for (; (i < 8); i++)
 # 404 "main.cu"
-} }
-# 406 "main.cu"
-} }
+{
 # 408 "main.cu"
-} }
+if (((((((((_ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E15group_indicator)[(threadIdx.x)]))[(threadIdx.y)]))[i]) >> (threadIdx.z)) & 1) == 1)
 # 409 "main.cu"
-} } 
+{
+# 410 "main.cu"
+((((((_ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E6result)[(threadIdx.x)]))[(threadIdx.y)]))[(threadIdx.z)]) += ((((_ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E5group)[i]))[(threadIdx.z)]);
+# 411 "main.cu"
+}
+# 412 "main.cu"
+} }
 # 413 "main.cu"
+}
+# 415 "main.cu"
+} } 
+# 416 "main.cu"
 }}
 # 117 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cub/block/../iterator/../util_device.cuh"
 __global__ __var_used__ void _ZN3cub11EmptyKernelIvEEvv(void){
@@ -2486,3 +2407,24 @@ __global__ __var_used__ void _ZN3cub11EmptyKernelIvEEvv(void){
 # 117 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cub/block/../iterator/../util_device.cuh"
 # 117 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cub/block/../iterator/../util_device.cuh"
 }}
+__asm__(".align 2");
+# 423 "/usr/local/cuda/bin/../targets/x86_64-linux/include/vector_types.h"
+___device__( __no_sc__) __inline__ void _ZN4dim3C1Ejjj( struct dim3 *const this, 
+# 423 "/usr/local/cuda/bin/../targets/x86_64-linux/include/vector_types.h"
+unsigned vx, 
+# 423 "/usr/local/cuda/bin/../targets/x86_64-linux/include/vector_types.h"
+unsigned vy, 
+# 423 "/usr/local/cuda/bin/../targets/x86_64-linux/include/vector_types.h"
+unsigned vz){
+# 423 "/usr/local/cuda/bin/../targets/x86_64-linux/include/vector_types.h"
+{
+# 423 "/usr/local/cuda/bin/../targets/x86_64-linux/include/vector_types.h"
+(this->x) = vx;
+# 423 "/usr/local/cuda/bin/../targets/x86_64-linux/include/vector_types.h"
+(this->y) = vy;
+# 423 "/usr/local/cuda/bin/../targets/x86_64-linux/include/vector_types.h"
+(this->z) = vz; 
+# 423 "/usr/local/cuda/bin/../targets/x86_64-linux/include/vector_types.h"
+}}
+__asm__(".align 2");
+___device__( __no_sc__) __inline__ void _ZN4dim3C2Ejjj( struct dim3 *const this,  unsigned __T2,  unsigned __T3,  unsigned __T4){ {  _ZN4dim3C1Ejjj(this, __T2, __T3, __T4);  }}

@@ -17,7 +17,7 @@
 #define MAT_PTR_TYPE float
 #endif
 
-#define SPARSITY 90
+#define SPARSITY 95
 #define BIT_WIDTH 8
 #define MAX_GROUP_NUM 8
 #define TILE_HEIGHT 32

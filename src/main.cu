@@ -312,107 +312,121 @@ __global__ void bit_wise_spgemm_3d(int split_k,
 
 template <typename int32_or_64>
 __global__ void generate_group_indicator(
-            int32_or_64 *MatB_bit,
-            float *dA_dense_gmem,
-            int *group_id_gmem,
-            int *spilled_row_hash_table_reverse_gmem,
-            float *d_group_ele_row_val,
+                int32_or_64 *MatB_bit,
+                float *dA_dense_gmem,
+                int *group_id_gmem,
+                int *spilled_row_hash_table_reverse_gmem,
+                float *d_group_ele_row_val,
                 int *spilled_row_cnt_offset,
                 int *spilled_nnz_offset,
                 float *tile_spilled_csrVal,
                 int *tile_spilled_csrColInd,
-                int *tile_spilled_csrRowPtr
+                int *tile_spilled_csrRowPtr,
+                float *final_result_gmem
             )
 {
-    __shared__ float dA_dense_smem[TILE_HEIGHT][SPLIT_K];
+    // __shared__ float dA_dense_smem[TILE_HEIGHT][SPLIT_K];
     __shared__ int group_id_smem[SPLIT_K];
     __shared__ int spilled_row_hash_table_reverse_smem[SPLIT_K];
     __shared__ int32_or_64 group_indicator[TILE_HEIGHT][BIT_WIDTH][MAX_GROUP_NUM];
     // __shared__ int group_indicator_t[TILE_HEIGHT][BIT_WIDTH][TILE_WIDTH];
     __shared__ float group[MAX_GROUP_NUM][TILE_WIDTH];
     __shared__ float result[TILE_HEIGHT][BIT_WIDTH][TILE_WIDTH];
+    __shared__ int32_or_64 MatB_bit_smem[SPLIT_K];
     
     int row_group_id;
+    int tid = (threadIdx.y * blockDim.x) + threadIdx.x;
     
     for (int k = 0; k < SIZE_K/SPLIT_K; k++)
     {
         int tileA_id = gridDim.x * blockIdx.y + k;
         int tileB_id = k * gridDim.x + blockIdx.x;
 
-        if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0)
-        {
-            printf("tileA_id: %d, k: %d\n", tileA_id, k);
-        }
-
         // Load MatB's group data into shared memory
-        if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z < TILE_WIDTH)
+        if (threadIdx.x == 0 && threadIdx.y == 0)
         {
-            for (int i = 0; i < MAX_GROUP_NUM; i++)
+            for (int z = 0; z < TILE_WIDTH; z++)
             {
-                group[i][threadIdx.z] = d_group_ele_row_val[(MAX_GROUP_NUM * tileB_id + i) * TILE_WIDTH + threadIdx.z];
+                int entry_B = ((SPLIT_K * k) + z) * gridDim.x + blockIdx.x;
+                MatB_bit_smem[z] = MatB_bit[entry_B];
+                for (int i = 0; i < MAX_GROUP_NUM; i++)
+                {
+                    group[i][z] = d_group_ele_row_val[(MAX_GROUP_NUM * tileB_id + i) * TILE_WIDTH + z];
+                }
             }
         }
 
         // Load MatB's group information into shared memory
-        for (int i = 0; i < SPLIT_K/blockDim.x; i++)
-        {
-            int rowB_ind = k * SPLIT_K + i * blockDim.x + threadIdx.x;
-            int entry = rowB_ind * gridDim.x + blockIdx.x;
-            // Note that the layout of group_id is row major while the layout of spilled_row_hash_table is block major
-            group_id_smem[i * blockDim.x + threadIdx.x] = group_id_gmem[entry];
-            spilled_row_hash_table_reverse_smem[i * blockDim.x + threadIdx.x] 
-                = spilled_row_hash_table_reverse_gmem[i * blockDim.x + threadIdx.x + tileB_id * SPLIT_K];
-        }
+        // SPLIT_K/blockDim.x = 256/32 = 8 = blockDim.y
+        int rowB_ind = k * SPLIT_K + tid;
+        int entry = rowB_ind * gridDim.x + blockIdx.x;
+        group_id_smem[tid] = group_id_gmem[entry];
+        spilled_row_hash_table_reverse_smem[tid] 
+            = spilled_row_hash_table_reverse_gmem[tid + tileB_id * SPLIT_K];
+
+        __syncthreads();
 
         int rowA_ind = blockIdx.y * blockDim.x + threadIdx.x;
-        int entry = rowA_ind * SIZE_K + k * SPLIT_K + threadIdx.z;
-        int tmp = (__float_as_int(dA_dense_gmem[entry]) >> threadIdx.y) & 1 == 0x01;
-        // if ((__float_as_int(dA_dense_gmem[entry]) >> threadIdx.y) & 1 == 0x01)
-        if ((threadIdx.y%2+threadIdx.z%2)%2 == 0)
+        for (int z = 0; z < SPLIT_K; z++)
         {
-            row_group_id = group_id_smem[threadIdx.z];
-            if (row_group_id != -1)
+            int entry_A = rowA_ind * SIZE_K + k * SPLIT_K + z;
+            if (dA_dense_gmem[entry_A] == 0.0f)
             {
-                int entry = ((TILE_HEIGHT * k) + threadIdx.z) * gridDim.x + blockIdx.x;
-                atomicOr(&group_indicator[threadIdx.x][threadIdx.y][row_group_id], MatB_bit[entry]);
+                continue;
             }
-            else 
+            // printf("entry_A: %d\n", entry_A);
+            int tmp = (__float_as_int(dA_dense_gmem[entry_A]) >> threadIdx.y) & 1 == 0x01;
+            // if ((__float_as_int(dA_dense_gmem[entry]) >> threadIdx.y) & 1 == 0x01)
+            if ((threadIdx.y % 2 + z % 2) % 2 == 0)
             {
-                // Current row_ind_in_tile in MatrixB is the spilled row
-                // Perform the extra computation
-                int row_in_csr = spilled_row_hash_table_reverse_smem[threadIdx.z];
-                int start_offset;
-                if (row_in_csr == 0)
+                row_group_id = group_id_smem[z];
+                if (row_group_id != -1)
                 {
-                    start_offset = 0;
+                    atomicOr(&group_indicator[threadIdx.x][threadIdx.y][row_group_id], MatB_bit_smem[z]);
                 }
                 else 
                 {
-                    start_offset = tile_spilled_csrRowPtr[spilled_row_cnt_offset[tileB_id] + row_in_csr - 1];
-                }
-                for (int j = start_offset; j < tile_spilled_csrRowPtr[spilled_row_cnt_offset[tileB_id] + row_in_csr]; j++)
-                {
-                    int col_ind = tile_spilled_csrColInd[spilled_nnz_offset[tileB_id] + j];
-                    result[threadIdx.x][threadIdx.y][col_ind] += tile_spilled_csrVal[spilled_nnz_offset[tileB_id] + j];
+                    // Current row_ind_in_tile in MatrixB is the spilled row
+                    // Perform the extra computation
+                    int row_in_csr = spilled_row_hash_table_reverse_smem[z];
+                    int start_offset;
+                    if (row_in_csr == 0)
+                    {
+                        start_offset = 0;
+                    }
+                    else 
+                    {
+                        start_offset = tile_spilled_csrRowPtr[spilled_row_cnt_offset[tileB_id] + row_in_csr - 1];
+                    }
+                    for (int j = start_offset; j < tile_spilled_csrRowPtr[spilled_row_cnt_offset[tileB_id] + row_in_csr]; j++)
+                    {
+                        int col_ind = tile_spilled_csrColInd[spilled_nnz_offset[tileB_id] + j];
+                        result[threadIdx.x][threadIdx.y][col_ind] += tile_spilled_csrVal[spilled_nnz_offset[tileB_id] + j];
+                    }
                 }
             }
         }
 
-        if (threadIdx.z < TILE_WIDTH)
+        for (int z = 0; z < TILE_WIDTH; z++)
         {
             for (int i = 0; i < MAX_GROUP_NUM; i++)
             {
-                // group_indicator_t[threadIdx.x][threadIdx.y][threadIdx.z] = 
-                //     group_indicator_t[threadIdx.x][threadIdx.y][threadIdx.z] | 
-                //     (((group_indicator[threadIdx.x][threadIdx.y][i] >> threadIdx.z) & 0x01) << i);
-                if (((group_indicator[threadIdx.x][threadIdx.y][i] >> threadIdx.z) & 0x01) == 1)
+                if (((group_indicator[threadIdx.x][threadIdx.y][i] >> z) & 0x01) == 1)
                 {
-                    result[threadIdx.x][threadIdx.y][threadIdx.z] += group[i][threadIdx.z];
+                    result[threadIdx.x][threadIdx.y][z] += group[i][z];
+                    // result[threadIdx.x][threadIdx.y][z] += i;
                 }
             }
         }
-
     }
+
+    // compute with cuda core
+    for (int i = 0; i < TILE_WIDTH; i++)
+    {
+        int ind = (blockIdx.y * blockDim.x + threadIdx.x) * SIZE_N + blockIdx.x * TILE_WIDTH + i;
+        final_result_gmem[ind] += result[threadIdx.x][threadIdx.y][i] * float(threadIdx.y);
+    }
+
 }
 
 // template <typename int32_or_64>
@@ -1003,18 +1017,24 @@ int main()
     //                                 dC_final_result_gmem
     //                                 );
     printf("Generate group indicator\n");
-    dim3 grid3(SIZE_M/TILE_HEIGHT, SIZE_N/TILE_WIDTH, 1), block3(TILE_HEIGHT, BIT_WIDTH, SPLIT_K);
+    dim3 grid3(SIZE_N/TILE_WIDTH, SIZE_M/TILE_HEIGHT, 1), block3(TILE_HEIGHT, BIT_WIDTH, 1);
     generate_group_indicator<<<grid3, block3>>>(dB_bitmask, 
                                                 dA_dense, 
                                                 dB_group_id, 
                                                 dB_spilled_row_hash_table_reverse_gmem,
                                                 dB_group_ele_val,
-                                     dB_spilled_row_cnt_offset,
-                                     dB_spilled_nnz_offset,
-                                     dB_tile_spilled_csrVal,                // output
-                                     dB_tile_spilled_csrColInd,             // output
-                                     dB_tile_spilled_csrRowPtr             // output
+                                                dB_spilled_row_cnt_offset,
+                                                dB_spilled_nnz_offset,
+                                                dB_tile_spilled_csrVal,                // output
+                                                dB_tile_spilled_csrColInd,             // output
+                                                dB_tile_spilled_csrRowPtr,             // output
+                                                dC_final_result_gmem
                                                 );
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("CUDA Error: %s\n", cudaGetErrorString(err));
+    }
 
     // spgemm_compute<<<grid2, block2>>>(dA_group_indicator_t_gmem, dB_group_ele_val);
 
@@ -1053,6 +1073,7 @@ int main()
     //--------------------------------------------------------------------------
     // SpGEMM Computation
 
+    cudaEventRecord(cusparse_start);
     cusparseSpGEMMDescr_t spgemmDesc;
     CHECK_CUSPARSE( cusparseSpGEMM_createDescr(&spgemmDesc) )
 
@@ -1071,7 +1092,6 @@ int main()
                                       computeType, CUSPARSE_SPGEMM_DEFAULT,
                                       spgemmDesc, &bufferSize1, dBuffer1) )
 
-    cudaEventRecord(cusparse_start);
     // ask bufferSize2 bytes for external memory
     CHECK_CUSPARSE(
         cusparseSpGEMM_compute(handle, opA, opB,
