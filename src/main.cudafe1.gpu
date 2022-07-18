@@ -1526,6 +1526,8 @@ struct _ZN4cusp6system4cuda6detail5par_tE {};
 ___device__(extern  __no_sc__) __inline__ enum cudaError cudaMalloc(void **, size_t);
 # 121 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cuda_device_runtime_api.h"
 ___device__(extern  __no_sc__) enum cudaError cudaDeviceSynchronize(void);
+# 122 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cuda_device_runtime_api.h"
+___device__(extern  __no_sc__) enum cudaError cudaGetLastError(void);
 # 124 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cuda_device_runtime_api.h"
 ___device__(extern  __no_sc__) const char *cudaGetErrorString(enum cudaError);
 # 133 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cuda_device_runtime_api.h"
@@ -1568,14 +1570,20 @@ ___device__(static  __no_sc__) __inline__ int _ZN34_INTERNAL_12_main_cpp1_ii_27d
 ___device__(static  __no_sc__) __inline__ int _ZN34_INTERNAL_12_main_cpp1_ii_27d4eacd9atomicCASEPiii(int *, int, int);
 # 3295 "/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/device_functions.h"
 ___device__(extern  __no_sc__) unsigned __cudaPushCallConfiguration(struct dim3, struct dim3, size_t, struct CUstream_st *);
-# 604 "main.cu"
+# 313 "main.cu"
+__global__ __var_used__ extern void _Z18generate_tiled_csrPfPiS0_(float *, int *, int *);
+# 449 "main.cu"
+__global__ __var_used__ extern void _Z20dense2tiledcsr_step1PfPiS0_S_S0_(float *, int *, int *, float *, int *);
+# 477 "main.cu"
+__global__ __var_used__ extern void _Z12csr2tiledcsrilPiS_PfS_S_S0_S_S_S_(int, int64_t, int *, int *, float *, int *, int *, float *, int *, int *, int *);
+# 908 "main.cu"
 __global__ __var_used__ extern void _Z13dense2bitmaskIiEvPfPT_(float *, int *);
 # 21 "main.cu"
 __global__ __var_used__ extern void _Z15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_(int *, int *, int *, float *, float *, int *, int *, int *, int *, int *);
 # 162 "main.cu"
 __global__ __var_used__ extern void _Z20generate_spilled_csrIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_S3_S2_S2_S2_S2_(int *, int *, int *, float *, float *, int *, int *, int *, int *, int *, float *, int *, int *, int *, int *);
-# 314 "main.cu"
-__global__ __var_used__ extern void _Z24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_(int *, float *, int *, int *, float *, int *, int *, float *, int *, int *);
+# 555 "main.cu"
+__global__ __var_used__ extern void _Z27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_(int *, float *, int *, int *, float *, int *, int *, float *, int *, int *, int *, int *, float *, int *, int *, float *);
 # 117 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cub/block/../iterator/../util_device.cuh"
 __global__ __var_used__ extern void _ZN3cub11EmptyKernelIvEEvv(void);
 # 423 "/usr/local/cuda/bin/../targets/x86_64-linux/include/vector_types.h"
@@ -1595,18 +1603,22 @@ static  __shared__  __var_used__ int _ZZ15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_
 static  __shared__  __var_used__ float _ZZ20generate_spilled_csrIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_S3_S2_S2_S2_S2_E12d_dense_smem[256][32];
 # 186 "main.cu"
 static  __shared__  __var_used__ int _ZZ20generate_spilled_csrIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_S3_S2_S2_S2_S2_E27spilled_row_hash_table_smem[256];
-# 327 "main.cu"
-static  __shared__  __var_used__ float _ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E13dA_dense_smem[32][256];
-# 328 "main.cu"
-static  __shared__  __var_used__ int _ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E13group_id_smem[256];
-# 329 "main.cu"
-static  __shared__  __var_used__ int _ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E35spilled_row_hash_table_reverse_smem[256];
-# 330 "main.cu"
-static  __shared__  __var_used__ int _ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E15group_indicator[32][8][8];
-# 332 "main.cu"
-static  __shared__  __var_used__ float _ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E5group[8][32];
-# 333 "main.cu"
-static  __shared__  __var_used__ float _ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E6result[32][8][32];
+# 575 "main.cu"
+static  __shared__  __var_used__ int _ZZ27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_E13group_id_smem[256];
+# 576 "main.cu"
+static  __shared__  __var_used__ int _ZZ27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_E35spilled_row_hash_table_reverse_smem[256];
+# 577 "main.cu"
+static  __shared__  __var_used__ int _ZZ27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_E15group_indicator[32][8][8];
+# 578 "main.cu"
+static  __shared__  __var_used__ float _ZZ27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_E6result[32][8][32];
+# 579 "main.cu"
+static  __shared__  __var_used__ int _ZZ27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_E13MatB_bit_smem[256];
+# 581 "main.cu"
+static  __shared__  __var_used__ int _ZZ27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_E21tiled_csr_offset_smem[33];
+# 582 "main.cu"
+static  __shared__  __var_used__ int _ZZ27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_E21tiled_csr_column_smem[256];
+# 583 "main.cu"
+static  __shared__  __var_used__ float _ZZ27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_E20tiled_csr_value_smem[256];
 # 69 "/usr/local/cuda/bin/../targets/x86_64-linux/include/thrust/system/detail/sequential/execution_policy.h"
 static  __device__  __var_used__ const struct _ZN6thrust6system6detail10sequential3tagE _ZN34_INTERNAL_12_main_cpp1_ii_27d4eacd6thrust6system6detail10sequential3seqE;
 # 45 "/usr/local/cuda/bin/../targets/x86_64-linux/include/thrust/system/cpp/detail/par.h"
@@ -1732,79 +1744,373 @@ int val){
 return __iAtomicCAS(address, compare, val);
 # 173 "/usr/local/cuda/bin/../targets/x86_64-linux/include/device_atomic_functions.hpp"
 }}
-# 604 "main.cu"
-__global__ __var_used__ void _Z13dense2bitmaskIiEvPfPT_(
-# 604 "main.cu"
-float *MatB_dense, 
-# 604 "main.cu"
-int *MatB_bit){
-# 605 "main.cu"
+# 313 "main.cu"
+__global__ __var_used__ void _Z18generate_tiled_csrPfPiS0_(
+# 314 "main.cu"
+float *d_csr_values, 
+# 315 "main.cu"
+int *d_csr_columns, 
+# 316 "main.cu"
+int *d_csr_offsets){
+# 318 "main.cu"
 {
-# 609 "main.cu"
- int __cuda_local_var_191104_9_non_const_row_ind;
-# 610 "main.cu"
- int __cuda_local_var_191105_9_non_const_entry_ind;
-# 611 "main.cu"
- int __cuda_local_var_191106_9_non_const_entry_ind_bit;
-# 609 "main.cu"
-__cuda_local_var_191104_9_non_const_row_ind = ((int)(((blockDim.x) * (blockIdx.y)) + (threadIdx.x)));
-# 610 "main.cu"
-__cuda_local_var_191105_9_non_const_entry_ind = ((int)(((((unsigned)__cuda_local_var_191104_9_non_const_row_ind) * (gridDim.x)) * 32U) + ((blockIdx.x) * 32U)));
-# 611 "main.cu"
-__cuda_local_var_191106_9_non_const_entry_ind_bit = ((int)((((unsigned)__cuda_local_var_191104_9_non_const_row_ind) * (gridDim.x)) + (blockIdx.x)));
-# 612 "main.cu"
-if (0)
-# 613 "main.cu"
+# 319 "main.cu"
+ int __cuda_local_var_190849_9_non_const_row_ind;
+# 320 "main.cu"
+ int __cuda_local_var_190850_9_non_const_start_offset;
+# 319 "main.cu"
+__cuda_local_var_190849_9_non_const_row_ind = ((int)(((blockIdx.y) * (blockDim.x)) + (threadIdx.x)));
+# 320 "main.cu"
+__cuda_local_var_190850_9_non_const_start_offset = (d_csr_offsets[__cuda_local_var_190849_9_non_const_row_ind]);
+# 322 "main.cu"
 {
-# 614 "main.cu"
-{
-# 614 "main.cu"
+# 322 "main.cu"
  int i;
-# 614 "main.cu"
+# 322 "main.cu"
 i = 0;
-# 614 "main.cu"
-for (; (i < 64); i++)
-# 615 "main.cu"
+# 322 "main.cu"
+for (; (i < 256); i++)
+# 323 "main.cu"
 {
-# 616 "main.cu"
-if ((MatB_dense[(__cuda_local_var_191105_9_non_const_entry_ind + i)]) != (0.0F))
-# 617 "main.cu"
-{
-# 618 "main.cu"
-_ZN34_INTERNAL_12_main_cpp1_ii_27d4eacd8atomicOrEPii((MatB_bit + __cuda_local_var_191106_9_non_const_entry_ind_bit), ((int)(1ULL << i)));
-# 619 "main.cu"
-}
-# 620 "main.cu"
-} }
-# 621 "main.cu"
-} else  {
-# 622 "main.cu"
-if (1)
-# 623 "main.cu"
-{
-# 624 "main.cu"
-{
-# 624 "main.cu"
- int i;
-# 624 "main.cu"
-i = 0;
-# 624 "main.cu"
-for (; (i < 32); i++)
-# 625 "main.cu"
-{
-# 626 "main.cu"
-if ((MatB_dense[(__cuda_local_var_191105_9_non_const_entry_ind + i)]) != (0.0F))
-# 627 "main.cu"
-{
-# 628 "main.cu"
-_ZN34_INTERNAL_12_main_cpp1_ii_27d4eacd8atomicOrEPii((MatB_bit + __cuda_local_var_191106_9_non_const_entry_ind_bit), (1 << i));
-# 629 "main.cu"
-}
-# 630 "main.cu"
-} }
-# 631 "main.cu"
+# 325 "main.cu"
 } } 
-# 632 "main.cu"
+# 326 "main.cu"
+}}
+# 449 "main.cu"
+__global__ __var_used__ void _Z20dense2tiledcsr_step1PfPiS0_S_S0_(
+# 450 "main.cu"
+float *dA_dense_gmem, 
+# 451 "main.cu"
+int *tiled_csr_offset, 
+# 452 "main.cu"
+int *tiled_csr_column, 
+# 453 "main.cu"
+float *tiled_csr_value, 
+# 454 "main.cu"
+int *tiled_csr_nnz){
+# 456 "main.cu"
+{
+# 457 "main.cu"
+ int __cuda_local_var_190987_9_non_const_bid;
+# 457 "main.cu"
+__cuda_local_var_190987_9_non_const_bid = ((int)(((blockIdx.y) * (gridDim.x)) + (blockIdx.x)));
+# 458 "main.cu"
+{
+# 458 "main.cu"
+ int i;
+# 458 "main.cu"
+i = 0;
+# 458 "main.cu"
+for (; (i < 32); i++)
+# 459 "main.cu"
+{
+# 460 "main.cu"
+{
+# 460 "main.cu"
+ int j;
+# 460 "main.cu"
+j = 0;
+# 460 "main.cu"
+for (; (j < 256); j++)
+# 461 "main.cu"
+{
+# 462 "main.cu"
+ int __cuda_local_var_190992_17_non_const_row_ind;
+# 463 "main.cu"
+ int __cuda_local_var_190993_17_non_const_entry;
+# 462 "main.cu"
+__cuda_local_var_190992_17_non_const_row_ind = ((int)((blockIdx.y) + ((unsigned)i)));
+# 463 "main.cu"
+__cuda_local_var_190993_17_non_const_entry = ((int)((((unsigned)(__cuda_local_var_190992_17_non_const_row_ind * 256)) + ((blockIdx.x) * 256U)) + ((unsigned)j)));
+# 464 "main.cu"
+if ((dA_dense_gmem[__cuda_local_var_190993_17_non_const_entry]) != (0.0F))
+# 465 "main.cu"
+{
+# 466 "main.cu"
+(tiled_csr_nnz[__cuda_local_var_190987_9_non_const_bid])++;
+# 467 "main.cu"
+}
+# 468 "main.cu"
+} }
+# 469 "main.cu"
+} } 
+# 470 "main.cu"
+}}
+# 477 "main.cu"
+__global__ __var_used__ void _Z12csr2tiledcsrilPiS_PfS_S_S0_S_S_S_(
+# 478 "main.cu"
+int tileA_cnt, 
+# 479 "main.cu"
+int64_t dA_nnz, 
+# 480 "main.cu"
+int *dA_csr_offset, 
+# 481 "main.cu"
+int *dA_csr_column, 
+# 482 "main.cu"
+float *dA_csr_value, 
+# 483 "main.cu"
+int *tiled_csr_offset, 
+# 484 "main.cu"
+int *tiled_csr_column, 
+# 485 "main.cu"
+float *tiled_csr_value, 
+# 486 "main.cu"
+int *tile_nnz_acc, 
+# 487 "main.cu"
+int *tile_nnz, 
+# 488 "main.cu"
+int *tile_row_nnz){
+# 490 "main.cu"
+{
+# 505 "main.cu"
+ int __cuda_local_var_191035_9_non_const_tmp_cnt;
+# 513 "main.cu"
+ int __cuda_local_var_191043_9_non_const_tmp_tile_nnz[32];
+# 492 "main.cu"
+{
+# 492 "main.cu"
+ int i;
+# 492 "main.cu"
+i = 0;
+# 492 "main.cu"
+for (; (i < 1025); i++)
+# 493 "main.cu"
+{
+# 494 "main.cu"
+ int __cuda_local_var_191024_13_non_const_start_offset;
+# 495 "main.cu"
+ int __cuda_local_var_191025_13_non_const_end_offset;
+# 494 "main.cu"
+__cuda_local_var_191024_13_non_const_start_offset = (dA_csr_offset[i]);
+# 495 "main.cu"
+__cuda_local_var_191025_13_non_const_end_offset = (dA_csr_offset[(i + 1)]);
+# 496 "main.cu"
+{
+# 496 "main.cu"
+ int j;
+# 496 "main.cu"
+j = __cuda_local_var_191024_13_non_const_start_offset;
+# 496 "main.cu"
+for (; (j < __cuda_local_var_191025_13_non_const_end_offset); j++)
+# 497 "main.cu"
+{
+# 498 "main.cu"
+ int __cuda_local_var_191028_17_non_const_tileA_y;
+# 499 "main.cu"
+ int __cuda_local_var_191029_17_non_const_tileA_x;
+# 500 "main.cu"
+ int __cuda_local_var_191030_17_non_const_tileA_id;
+# 498 "main.cu"
+__cuda_local_var_191028_17_non_const_tileA_y = (i / 32);
+# 499 "main.cu"
+__cuda_local_var_191029_17_non_const_tileA_x = ((dA_csr_column[j]) / 256);
+# 500 "main.cu"
+__cuda_local_var_191030_17_non_const_tileA_id = ((__cuda_local_var_191028_17_non_const_tileA_y * 1) + __cuda_local_var_191029_17_non_const_tileA_x);
+# 501 "main.cu"
+(tile_nnz[__cuda_local_var_191030_17_non_const_tileA_id])++;
+# 502 "main.cu"
+} }
+# 503 "main.cu"
+} }
+# 505 "main.cu"
+__cuda_local_var_191035_9_non_const_tmp_cnt = 0;
+# 506 "main.cu"
+{
+# 506 "main.cu"
+ int i;
+# 506 "main.cu"
+i = 0;
+# 506 "main.cu"
+for (; (i < tileA_cnt); i++)
+# 507 "main.cu"
+{
+# 508 "main.cu"
+(tile_nnz_acc[i]) = __cuda_local_var_191035_9_non_const_tmp_cnt;
+# 509 "main.cu"
+__cuda_local_var_191035_9_non_const_tmp_cnt += (tile_nnz[i]);
+# 510 "main.cu"
+} }
+# 511 "main.cu"
+(tile_nnz_acc[tileA_cnt]) = __cuda_local_var_191035_9_non_const_tmp_cnt;
+# 515 "main.cu"
+{
+# 515 "main.cu"
+ int i;
+# 515 "main.cu"
+i = 0;
+# 515 "main.cu"
+for (; (i < 1025); i++)
+# 516 "main.cu"
+{
+# 517 "main.cu"
+ int __cuda_local_var_191047_13_non_const_start_offset;
+# 518 "main.cu"
+ int __cuda_local_var_191048_13_non_const_end_offset;
+# 517 "main.cu"
+__cuda_local_var_191047_13_non_const_start_offset = (dA_csr_offset[i]);
+# 518 "main.cu"
+__cuda_local_var_191048_13_non_const_end_offset = (dA_csr_offset[(i + 1)]);
+# 519 "main.cu"
+{
+# 519 "main.cu"
+ int j;
+# 519 "main.cu"
+j = __cuda_local_var_191047_13_non_const_start_offset;
+# 519 "main.cu"
+for (; (j < __cuda_local_var_191048_13_non_const_end_offset); j++)
+# 520 "main.cu"
+{
+# 521 "main.cu"
+ int __cuda_local_var_191051_17_non_const_tileA_y;
+# 522 "main.cu"
+ int __cuda_local_var_191052_17_non_const_tileA_x;
+# 523 "main.cu"
+ int __cuda_local_var_191053_17_non_const_tileA_id;
+# 527 "main.cu"
+ int __cuda_local_var_191057_17_non_const_tile_entry_x;
+# 530 "main.cu"
+ int __cuda_local_var_191060_17_non_const_tile_offset;
+# 531 "main.cu"
+ int __cuda_local_var_191061_17_non_const_entry;
+# 521 "main.cu"
+__cuda_local_var_191051_17_non_const_tileA_y = (i / 32);
+# 522 "main.cu"
+__cuda_local_var_191052_17_non_const_tileA_x = ((dA_csr_column[j]) / 256);
+# 523 "main.cu"
+__cuda_local_var_191053_17_non_const_tileA_id = ((__cuda_local_var_191051_17_non_const_tileA_y * 1) + __cuda_local_var_191052_17_non_const_tileA_x);
+# 524 "main.cu"
+(tile_row_nnz[((i * 1) + __cuda_local_var_191052_17_non_const_tileA_x)])++;
+# 527 "main.cu"
+__cuda_local_var_191057_17_non_const_tile_entry_x = ((dA_csr_column[j]) % 256);
+# 530 "main.cu"
+__cuda_local_var_191060_17_non_const_tile_offset = (tile_nnz_acc[__cuda_local_var_191053_17_non_const_tileA_id]);
+# 531 "main.cu"
+__cuda_local_var_191061_17_non_const_entry = (__cuda_local_var_191060_17_non_const_tile_offset + ((__cuda_local_var_191043_9_non_const_tmp_tile_nnz)[__cuda_local_var_191053_17_non_const_tileA_id]));
+# 532 "main.cu"
+((__cuda_local_var_191043_9_non_const_tmp_tile_nnz)[__cuda_local_var_191053_17_non_const_tileA_id])++;
+# 535 "main.cu"
+(tiled_csr_value[__cuda_local_var_191061_17_non_const_entry]) = (dA_csr_value[j]);
+# 536 "main.cu"
+(tiled_csr_column[__cuda_local_var_191061_17_non_const_entry]) = __cuda_local_var_191057_17_non_const_tile_entry_x;
+# 537 "main.cu"
+} }
+# 538 "main.cu"
+} }
+# 540 "main.cu"
+{
+# 540 "main.cu"
+ int i;
+# 540 "main.cu"
+i = 0;
+# 540 "main.cu"
+for (; (i < tileA_cnt); i++)
+# 541 "main.cu"
+{
+# 542 "main.cu"
+ int __cuda_local_var_191072_13_non_const_tileA_y;
+# 543 "main.cu"
+ int __cuda_local_var_191073_13_non_const_tileA_x;
+# 544 "main.cu"
+ int __cuda_local_var_191074_13_non_const_tile_nnz_tmp;
+# 542 "main.cu"
+__cuda_local_var_191072_13_non_const_tileA_y = (i / 1);
+# 543 "main.cu"
+__cuda_local_var_191073_13_non_const_tileA_x = (i % 1);
+# 544 "main.cu"
+__cuda_local_var_191074_13_non_const_tile_nnz_tmp = 0;
+# 545 "main.cu"
+{
+# 545 "main.cu"
+ int j;
+# 545 "main.cu"
+j = 0;
+# 545 "main.cu"
+for (; (j < 33); j++)
+# 546 "main.cu"
+{
+# 547 "main.cu"
+(tiled_csr_offset[((33 * i) + j)]) = __cuda_local_var_191074_13_non_const_tile_nnz_tmp;
+# 548 "main.cu"
+__cuda_local_var_191074_13_non_const_tile_nnz_tmp += (tile_row_nnz[((((__cuda_local_var_191072_13_non_const_tileA_y * 32) + j) * 1) + __cuda_local_var_191073_13_non_const_tileA_x)]);
+# 549 "main.cu"
+} }
+# 550 "main.cu"
+} } 
+# 551 "main.cu"
+}}
+# 908 "main.cu"
+__global__ __var_used__ void _Z13dense2bitmaskIiEvPfPT_(
+# 908 "main.cu"
+float *MatB_dense, 
+# 908 "main.cu"
+int *MatB_bit){
+# 909 "main.cu"
+{
+# 913 "main.cu"
+ int __cuda_local_var_191390_9_non_const_row_ind;
+# 914 "main.cu"
+ int __cuda_local_var_191391_9_non_const_entry_ind;
+# 915 "main.cu"
+ int __cuda_local_var_191392_9_non_const_entry_ind_bit;
+# 913 "main.cu"
+__cuda_local_var_191390_9_non_const_row_ind = ((int)(((blockDim.x) * (blockIdx.y)) + (threadIdx.x)));
+# 914 "main.cu"
+__cuda_local_var_191391_9_non_const_entry_ind = ((int)(((((unsigned)__cuda_local_var_191390_9_non_const_row_ind) * (gridDim.x)) * 32U) + ((blockIdx.x) * 32U)));
+# 915 "main.cu"
+__cuda_local_var_191392_9_non_const_entry_ind_bit = ((int)((((unsigned)__cuda_local_var_191390_9_non_const_row_ind) * (gridDim.x)) + (blockIdx.x)));
+# 916 "main.cu"
+if (0)
+# 917 "main.cu"
+{
+# 918 "main.cu"
+{
+# 918 "main.cu"
+ int i;
+# 918 "main.cu"
+i = 0;
+# 918 "main.cu"
+for (; (i < 64); i++)
+# 919 "main.cu"
+{
+# 920 "main.cu"
+if ((MatB_dense[(__cuda_local_var_191391_9_non_const_entry_ind + i)]) != (0.0F))
+# 921 "main.cu"
+{
+# 922 "main.cu"
+_ZN34_INTERNAL_12_main_cpp1_ii_27d4eacd8atomicOrEPii((MatB_bit + __cuda_local_var_191392_9_non_const_entry_ind_bit), ((int)(1ULL << i)));
+# 923 "main.cu"
+}
+# 924 "main.cu"
+} }
+# 925 "main.cu"
+} else  {
+# 926 "main.cu"
+if (1)
+# 927 "main.cu"
+{
+# 928 "main.cu"
+{
+# 928 "main.cu"
+ int i;
+# 928 "main.cu"
+i = 0;
+# 928 "main.cu"
+for (; (i < 32); i++)
+# 929 "main.cu"
+{
+# 930 "main.cu"
+if ((MatB_dense[(__cuda_local_var_191391_9_non_const_entry_ind + i)]) != (0.0F))
+# 931 "main.cu"
+{
+# 932 "main.cu"
+_ZN34_INTERNAL_12_main_cpp1_ii_27d4eacd8atomicOrEPii((MatB_bit + __cuda_local_var_191392_9_non_const_entry_ind_bit), (1 << i));
+# 933 "main.cu"
+}
+# 934 "main.cu"
+} }
+# 935 "main.cu"
+} } 
+# 936 "main.cu"
 }}
 # 21 "main.cu"
 __global__ __var_used__ void _Z15generate_groupsIiEvPT_S1_PiPfS3_S2_S2_S2_S2_S2_(
@@ -2196,209 +2502,329 @@ __cuda_local_var_190764_13_non_const_row_ind_total++;
 } 
 # 224 "main.cu"
 }}
-# 314 "main.cu"
-__global__ __var_used__ void _Z24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_(
-# 315 "main.cu"
+# 555 "main.cu"
+__global__ __var_used__ void _Z27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_(
+# 556 "main.cu"
 int *MatB_bit, 
-# 316 "main.cu"
+# 557 "main.cu"
 float *dA_dense_gmem, 
-# 317 "main.cu"
+# 558 "main.cu"
 int *group_id_gmem, 
-# 318 "main.cu"
+# 559 "main.cu"
 int *spilled_row_hash_table_reverse_gmem, 
-# 319 "main.cu"
+# 560 "main.cu"
 float *d_group_ele_row_val, 
-# 320 "main.cu"
+# 561 "main.cu"
 int *spilled_row_cnt_offset, 
-# 321 "main.cu"
+# 562 "main.cu"
 int *spilled_nnz_offset, 
-# 322 "main.cu"
+# 563 "main.cu"
 float *tile_spilled_csrVal, 
-# 323 "main.cu"
+# 564 "main.cu"
 int *tile_spilled_csrColInd, 
-# 324 "main.cu"
-int *tile_spilled_csrRowPtr){
-# 326 "main.cu"
+# 565 "main.cu"
+int *tile_spilled_csrRowPtr, 
+# 566 "main.cu"
+int *dA_tiled_csr_offset_gmem, 
+# 567 "main.cu"
+int *dA_tiled_csr_column_gmem, 
+# 568 "main.cu"
+float *dA_tiled_csr_value_gmem, 
+# 569 "main.cu"
+int *dA_tile_nnz_acc, 
+# 570 "main.cu"
+int *dA_tile_nnz, 
+# 571 "main.cu"
+float *final_result_gmem){
+# 573 "main.cu"
 {
-# 335 "main.cu"
- int __cuda_local_var_190865_9_non_const_row_group_id;
-# 337 "main.cu"
+# 591 "main.cu"
+ int __cuda_local_var_191121_9_non_const_row_group_id;
+# 592 "main.cu"
+ int __cuda_local_var_191122_9_non_const_bid;
+# 593 "main.cu"
+ int __cuda_local_var_191123_9_non_const_tid;
+# 594 "main.cu"
+ int __cuda_local_var_191124_9_non_const_group[8];
+# 585 "main.cu"
 {
-# 337 "main.cu"
+# 585 "main.cu"
+ int i;
+# 585 "main.cu"
+i = 0;
+# 585 "main.cu"
+for (; (i < 256); i++)
+# 586 "main.cu"
+{
+# 587 "main.cu"
+((_ZZ27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_E21tiled_csr_column_smem)[i]) = 0;
+# 588 "main.cu"
+((_ZZ27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_E20tiled_csr_value_smem)[i]) = (0.0F);
+# 589 "main.cu"
+} }
+# 592 "main.cu"
+__cuda_local_var_191122_9_non_const_bid = ((int)((blockIdx.x) + ((blockIdx.y) * (gridDim.x))));
+# 593 "main.cu"
+__cuda_local_var_191123_9_non_const_tid = ((int)(((threadIdx.y) * (blockDim.x)) + (threadIdx.x)));
+# 596 "main.cu"
+{
+# 596 "main.cu"
  int k;
-# 337 "main.cu"
+# 596 "main.cu"
 k = 0;
-# 337 "main.cu"
-for (; (k < 4); k++)
-# 338 "main.cu"
+# 596 "main.cu"
+for (; (k < 1); k++)
+# 597 "main.cu"
 {
-# 339 "main.cu"
- int __cuda_local_var_190869_13_non_const_tileA_id;
-# 340 "main.cu"
- int __cuda_local_var_190870_13_non_const_tileB_id;
-# 367 "main.cu"
- int __cuda_local_var_190897_13_non_const_rowA_ind;
-# 368 "main.cu"
- int __cuda_local_var_190898_13_non_const_entry;
-# 369 "main.cu"
- int __cuda_local_var_190899_13_non_const_tmp;
-# 339 "main.cu"
-__cuda_local_var_190869_13_non_const_tileA_id = ((int)(((gridDim.x) * (blockIdx.y)) + ((unsigned)k)));
-# 340 "main.cu"
-__cuda_local_var_190870_13_non_const_tileB_id = ((int)((((unsigned)k) * (gridDim.x)) + (blockIdx.x)));
-# 342 "main.cu"
-if ((((threadIdx.x) == 0U) && ((threadIdx.y) == 0U)) && ((threadIdx.z) == 0U))
-# 343 "main.cu"
+# 598 "main.cu"
+ int __cuda_local_var_191128_13_non_const_tileA_id;
+# 599 "main.cu"
+ int __cuda_local_var_191129_13_non_const_tileB_id;
+# 653 "main.cu"
+ int __cuda_local_var_191165_13_non_const_rowB_ind;
+# 654 "main.cu"
+ int __cuda_local_var_191166_13_non_const_entry;
+# 661 "main.cu"
+ int __cuda_local_var_191173_13_non_const_rowA_ind;
+# 598 "main.cu"
+__cuda_local_var_191128_13_non_const_tileA_id = ((int)(((gridDim.x) * (blockIdx.y)) + ((unsigned)k)));
+# 599 "main.cu"
+__cuda_local_var_191129_13_non_const_tileB_id = ((int)((((unsigned)k) * (gridDim.x)) + (blockIdx.x)));
+# 602 "main.cu"
 {
-# 344 "main.cu"
-printf(((const char *)"tileA_id: %d, k: %d\n"), __cuda_local_var_190869_13_non_const_tileA_id, k);
-# 345 "main.cu"
-}
-# 348 "main.cu"
-if ((((threadIdx.x) == 0U) && ((threadIdx.y) == 0U)) && ((threadIdx.z) < 32U))
-# 349 "main.cu"
-{
-# 350 "main.cu"
-{
-# 350 "main.cu"
+# 602 "main.cu"
  int i;
-# 350 "main.cu"
+# 602 "main.cu"
 i = 0;
-# 350 "main.cu"
-for (; (i < 8); i++)
-# 351 "main.cu"
+# 602 "main.cu"
+for (; (i < 33); i++)
+# 603 "main.cu"
 {
-# 352 "main.cu"
-((((_ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E5group)[i]))[(threadIdx.z)]) = (d_group_ele_row_val[(((unsigned)(((8 * __cuda_local_var_190870_13_non_const_tileB_id) + i) * 32)) + (threadIdx.z))]);
-# 353 "main.cu"
+# 604 "main.cu"
+((_ZZ27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_E21tiled_csr_offset_smem)[i]) = (dA_tiled_csr_offset_gmem[((__cuda_local_var_191128_13_non_const_tileA_id * 33) + i)]);
+# 605 "main.cu"
 } }
-# 354 "main.cu"
-}
-# 357 "main.cu"
+# 606 "main.cu"
 {
-# 357 "main.cu"
+# 606 "main.cu"
  int i;
-# 357 "main.cu"
+# 606 "main.cu"
 i = 0;
-# 357 "main.cu"
-for (; (((unsigned)i) < (256U / (blockDim.x))); i++)
-# 358 "main.cu"
+# 606 "main.cu"
+for (; (i < (dA_tile_nnz[__cuda_local_var_191128_13_non_const_tileA_id])); i++)
+# 607 "main.cu"
 {
-# 359 "main.cu"
- int __cuda_local_var_190889_17_non_const_rowB_ind;
-# 360 "main.cu"
- int __cuda_local_var_190890_17_non_const_entry;
-# 359 "main.cu"
-__cuda_local_var_190889_17_non_const_rowB_ind = ((int)((((unsigned)(k * 256)) + (((unsigned)i) * (blockDim.x))) + (threadIdx.x)));
-# 360 "main.cu"
-__cuda_local_var_190890_17_non_const_entry = ((int)((((unsigned)__cuda_local_var_190889_17_non_const_rowB_ind) * (gridDim.x)) + (blockIdx.x)));
-# 362 "main.cu"
-((_ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E13group_id_smem)[((((unsigned)i) * (blockDim.x)) + (threadIdx.x))]) = (group_id_gmem[__cuda_local_var_190890_17_non_const_entry]);
-# 363 "main.cu"
-((_ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E35spilled_row_hash_table_reverse_smem)[((((unsigned)i) * (blockDim.x)) + (threadIdx.x))]) = (spilled_row_hash_table_reverse_gmem[(((((unsigned)i) * (blockDim.x)) + (threadIdx.x)) + ((unsigned)(__cuda_local_var_190870_13_non_const_tileB_id * 256)))]);
-# 365 "main.cu"
+# 608 "main.cu"
+((_ZZ27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_E20tiled_csr_value_smem)[i]) = (dA_tiled_csr_value_gmem[((dA_tile_nnz_acc[__cuda_local_var_191128_13_non_const_tileA_id]) + i)]);
+# 609 "main.cu"
+((_ZZ27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_E21tiled_csr_column_smem)[i]) = (dA_tiled_csr_column_gmem[((dA_tile_nnz_acc[__cuda_local_var_191128_13_non_const_tileA_id]) + i)]);
+# 610 "main.cu"
 } }
-# 367 "main.cu"
-__cuda_local_var_190897_13_non_const_rowA_ind = ((int)(((blockIdx.y) * (blockDim.x)) + (threadIdx.x)));
-# 368 "main.cu"
-__cuda_local_var_190898_13_non_const_entry = ((int)(((unsigned)((__cuda_local_var_190897_13_non_const_rowA_ind * 1024) + (k * 256))) + (threadIdx.z)));
-# 369 "main.cu"
-__cuda_local_var_190899_13_non_const_tmp = (((__float_as_int((dA_dense_gmem[__cuda_local_var_190898_13_non_const_entry]))) >> (threadIdx.y)) & 1);
-# 371 "main.cu"
-if (((((threadIdx.y) % 2U) + ((threadIdx.z) % 2U)) % 2U) == 0U)
-# 372 "main.cu"
+# 630 "main.cu"
+if ((k % 8) == 0)
+# 631 "main.cu"
 {
-# 373 "main.cu"
-__cuda_local_var_190865_9_non_const_row_group_id = ((_ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E13group_id_smem)[(threadIdx.z)]);
-# 374 "main.cu"
-if (__cuda_local_var_190865_9_non_const_row_group_id != (-1))
-# 375 "main.cu"
+# 632 "main.cu"
 {
-# 376 "main.cu"
- int __cuda_local_var_190906_21_non_const_entry;
-# 376 "main.cu"
-__cuda_local_var_190906_21_non_const_entry = ((int)(((((unsigned)(32 * k)) + (threadIdx.z)) * (gridDim.x)) + (blockIdx.x)));
-# 377 "main.cu"
-_ZN34_INTERNAL_12_main_cpp1_ii_27d4eacd8atomicOrEPii(((((((_ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E15group_indicator)[(threadIdx.x)]))[(threadIdx.y)])) + __cuda_local_var_190865_9_non_const_row_group_id), (MatB_bit[__cuda_local_var_190906_21_non_const_entry]));
-# 378 "main.cu"
-}
-# 380 "main.cu"
-else 
-# 380 "main.cu"
-{
-# 383 "main.cu"
- int __cuda_local_var_190913_21_non_const_row_in_csr;
-# 384 "main.cu"
- int __cuda_local_var_190914_21_non_const_start_offset;
-# 383 "main.cu"
-__cuda_local_var_190913_21_non_const_row_in_csr = ((_ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E35spilled_row_hash_table_reverse_smem)[(threadIdx.z)]);
-# 385 "main.cu"
-if (__cuda_local_var_190913_21_non_const_row_in_csr == 0)
-# 386 "main.cu"
-{
-# 387 "main.cu"
-__cuda_local_var_190914_21_non_const_start_offset = 0;
-# 388 "main.cu"
-}
-# 390 "main.cu"
-else 
-# 390 "main.cu"
-{
-# 391 "main.cu"
-__cuda_local_var_190914_21_non_const_start_offset = (tile_spilled_csrRowPtr[(((spilled_row_cnt_offset[__cuda_local_var_190870_13_non_const_tileB_id]) + __cuda_local_var_190913_21_non_const_row_in_csr) - 1)]);
-# 392 "main.cu"
-}
-# 393 "main.cu"
-{
-# 393 "main.cu"
+# 632 "main.cu"
  int j;
-# 393 "main.cu"
-j = __cuda_local_var_190914_21_non_const_start_offset;
-# 393 "main.cu"
-for (; (j < (tile_spilled_csrRowPtr[((spilled_row_cnt_offset[__cuda_local_var_190870_13_non_const_tileB_id]) + __cuda_local_var_190913_21_non_const_row_in_csr)])); j++)
-# 394 "main.cu"
+# 632 "main.cu"
+j = 0;
+# 632 "main.cu"
+for (; (j < 8); j++)
+# 633 "main.cu"
 {
-# 395 "main.cu"
- int __cuda_local_var_190925_25_non_const_col_ind;
-# 395 "main.cu"
-__cuda_local_var_190925_25_non_const_col_ind = (tile_spilled_csrColInd[((spilled_nnz_offset[__cuda_local_var_190870_13_non_const_tileB_id]) + j)]);
-# 396 "main.cu"
-((((((_ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E6result)[(threadIdx.x)]))[(threadIdx.y)]))[__cuda_local_var_190925_25_non_const_col_ind]) += (tile_spilled_csrVal[((spilled_nnz_offset[__cuda_local_var_190870_13_non_const_tileB_id]) + j)]);
-# 397 "main.cu"
-} }
-# 398 "main.cu"
-}
-# 399 "main.cu"
-}
-# 401 "main.cu"
-if ((threadIdx.z) < 32U)
-# 402 "main.cu"
+# 634 "main.cu"
 {
-# 403 "main.cu"
-{
-# 403 "main.cu"
+# 634 "main.cu"
  int i;
-# 403 "main.cu"
+# 634 "main.cu"
 i = 0;
-# 403 "main.cu"
+# 634 "main.cu"
 for (; (i < 8); i++)
-# 404 "main.cu"
+# 635 "main.cu"
 {
-# 408 "main.cu"
-if (((((((((_ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E15group_indicator)[(threadIdx.x)]))[(threadIdx.y)]))[i]) >> (threadIdx.z)) & 1) == 1)
-# 409 "main.cu"
-{
-# 410 "main.cu"
-((((((_ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E6result)[(threadIdx.x)]))[(threadIdx.y)]))[(threadIdx.z)]) += ((((_ZZ24generate_group_indicatorIiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_E5group)[i]))[(threadIdx.z)]);
-# 411 "main.cu"
-}
-# 412 "main.cu"
+# 636 "main.cu"
+((__cuda_local_var_191124_9_non_const_group)[i]) = ((int)(d_group_ele_row_val[((((8U * ((((unsigned)j) * (gridDim.x)) + (blockIdx.x))) + ((unsigned)i)) * 32U) + (threadIdx.x))]));
+# 637 "main.cu"
 } }
-# 413 "main.cu"
+# 638 "main.cu"
+} }
+# 639 "main.cu"
 }
-# 415 "main.cu"
+# 642 "main.cu"
+if (((threadIdx.x) == 0U) && ((threadIdx.y) == 0U))
+# 643 "main.cu"
+{
+# 644 "main.cu"
+{
+# 644 "main.cu"
+ int z;
+# 644 "main.cu"
+z = 0;
+# 644 "main.cu"
+for (; (z < 32); z++)
+# 645 "main.cu"
+{
+# 646 "main.cu"
+ int __cuda_local_var_191158_21_non_const_entry_B;
+# 646 "main.cu"
+__cuda_local_var_191158_21_non_const_entry_B = ((int)((((unsigned)((256 * k) + z)) * (gridDim.x)) + (blockIdx.x)));
+# 647 "main.cu"
+((_ZZ27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_E13MatB_bit_smem)[z]) = (MatB_bit[__cuda_local_var_191158_21_non_const_entry_B]);
+# 648 "main.cu"
+} }
+# 649 "main.cu"
+}
+# 653 "main.cu"
+__cuda_local_var_191165_13_non_const_rowB_ind = ((k * 256) + __cuda_local_var_191123_9_non_const_tid);
+# 654 "main.cu"
+__cuda_local_var_191166_13_non_const_entry = ((int)((((unsigned)__cuda_local_var_191165_13_non_const_rowB_ind) * (gridDim.x)) + (blockIdx.x)));
+# 655 "main.cu"
+((_ZZ27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_E13group_id_smem)[__cuda_local_var_191123_9_non_const_tid]) = (group_id_gmem[__cuda_local_var_191166_13_non_const_entry]);
+# 656 "main.cu"
+((_ZZ27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_E35spilled_row_hash_table_reverse_smem)[__cuda_local_var_191123_9_non_const_tid]) = (spilled_row_hash_table_reverse_gmem[(__cuda_local_var_191123_9_non_const_tid + (__cuda_local_var_191129_13_non_const_tileB_id * 256))]);
+# 659 "main.cu"
+__syncthreads();
+# 661 "main.cu"
+__cuda_local_var_191173_13_non_const_rowA_ind = ((int)(((blockIdx.y) * (blockDim.x)) + (threadIdx.x)));
+# 662 "main.cu"
+{
+# 662 "main.cu"
+ int z;
+# 662 "main.cu"
+z = ((_ZZ27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_E21tiled_csr_offset_smem)[(threadIdx.x)]);
+# 662 "main.cu"
+for (; (z < ((_ZZ27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_E21tiled_csr_offset_smem)[((threadIdx.x) + 1U)])); z++)
+# 663 "main.cu"
+{
+# 664 "main.cu"
+ int __cuda_local_var_191176_17_non_const_entry_col;
+# 666 "main.cu"
+ int __cuda_local_var_191178_17_non_const_tmp;
+# 664 "main.cu"
+__cuda_local_var_191176_17_non_const_entry_col = ((_ZZ27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_E21tiled_csr_column_smem)[z]);
+# 666 "main.cu"
+__cuda_local_var_191178_17_non_const_tmp = (((__float_as_int(((_ZZ27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_E20tiled_csr_value_smem)[z]))) >> (threadIdx.y)) & 1);
+# 668 "main.cu"
+if (((((threadIdx.y) % 2U) + ((unsigned)(__cuda_local_var_191176_17_non_const_entry_col % 2))) % 2U) == 0U)
+# 669 "main.cu"
+{
+# 670 "main.cu"
+__cuda_local_var_191121_9_non_const_row_group_id = ((_ZZ27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_E13group_id_smem)[__cuda_local_var_191176_17_non_const_entry_col]);
+# 671 "main.cu"
+if (__cuda_local_var_191121_9_non_const_row_group_id != (-1))
+# 672 "main.cu"
+{
+# 673 "main.cu"
+_ZN34_INTERNAL_12_main_cpp1_ii_27d4eacd8atomicOrEPii(((((((_ZZ27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_E15group_indicator)[(threadIdx.x)]))[(threadIdx.y)])) + __cuda_local_var_191121_9_non_const_row_group_id), ((_ZZ27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_E13MatB_bit_smem)[__cuda_local_var_191176_17_non_const_entry_col]));
+# 674 "main.cu"
+}
+# 676 "main.cu"
+else 
+# 676 "main.cu"
+{
+# 679 "main.cu"
+ int __cuda_local_var_191191_25_non_const_row_in_csr;
+# 680 "main.cu"
+ int __cuda_local_var_191192_25_non_const_start_offset;
+# 679 "main.cu"
+__cuda_local_var_191191_25_non_const_row_in_csr = ((_ZZ27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_E35spilled_row_hash_table_reverse_smem)[__cuda_local_var_191176_17_non_const_entry_col]);
+# 681 "main.cu"
+if (__cuda_local_var_191191_25_non_const_row_in_csr == 0)
+# 682 "main.cu"
+{
+# 683 "main.cu"
+__cuda_local_var_191192_25_non_const_start_offset = 0;
+# 684 "main.cu"
+}
+# 686 "main.cu"
+else 
+# 686 "main.cu"
+{
+# 687 "main.cu"
+__cuda_local_var_191192_25_non_const_start_offset = (tile_spilled_csrRowPtr[(((spilled_row_cnt_offset[__cuda_local_var_191129_13_non_const_tileB_id]) + __cuda_local_var_191191_25_non_const_row_in_csr) - 1)]);
+# 688 "main.cu"
+}
+# 689 "main.cu"
+{
+# 689 "main.cu"
+ int j;
+# 689 "main.cu"
+j = __cuda_local_var_191192_25_non_const_start_offset;
+# 689 "main.cu"
+for (; (j < (tile_spilled_csrRowPtr[((spilled_row_cnt_offset[__cuda_local_var_191129_13_non_const_tileB_id]) + __cuda_local_var_191191_25_non_const_row_in_csr)])); j++)
+# 690 "main.cu"
+{
+# 691 "main.cu"
+ int __cuda_local_var_191203_29_non_const_col_ind;
+# 691 "main.cu"
+__cuda_local_var_191203_29_non_const_col_ind = (tile_spilled_csrColInd[((spilled_nnz_offset[__cuda_local_var_191129_13_non_const_tileB_id]) + j)]);
+# 692 "main.cu"
+((((((_ZZ27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_E6result)[(threadIdx.x)]))[(threadIdx.y)]))[__cuda_local_var_191203_29_non_const_col_ind]) += (tile_spilled_csrVal[((spilled_nnz_offset[__cuda_local_var_191129_13_non_const_tileB_id]) + j)]);
+# 693 "main.cu"
+} }
+# 694 "main.cu"
+}
+# 695 "main.cu"
+}
+# 696 "main.cu"
+} }
+# 698 "main.cu"
+__syncthreads();
+# 700 "main.cu"
+{
+# 700 "main.cu"
+ int z;
+# 700 "main.cu"
+z = 0;
+# 700 "main.cu"
+for (; (z < 32); z++)
+# 701 "main.cu"
+{
+# 702 "main.cu"
+{
+# 702 "main.cu"
+ int i;
+# 702 "main.cu"
+i = 0;
+# 702 "main.cu"
+for (; (i < 8); i++)
+# 703 "main.cu"
+{
+# 704 "main.cu"
+if (((((((((_ZZ27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_E15group_indicator)[z]))[(threadIdx.y)]))[i]) >> (threadIdx.x)) & 1) == 1)
+# 705 "main.cu"
+{
+# 706 "main.cu"
+((((((_ZZ27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_E6result)[z]))[(threadIdx.y)]))[(threadIdx.x)]) += ((float)((__cuda_local_var_191124_9_non_const_group)[i]));
+# 708 "main.cu"
+}
+# 709 "main.cu"
+} }
+# 710 "main.cu"
+} }
+# 711 "main.cu"
+} }
+# 714 "main.cu"
+{
+# 714 "main.cu"
+ int i;
+# 714 "main.cu"
+i = 0;
+# 714 "main.cu"
+for (; (i < 32); i++)
+# 715 "main.cu"
+{
+# 716 "main.cu"
+ int __cuda_local_var_191228_13_non_const_ind;
+# 716 "main.cu"
+__cuda_local_var_191228_13_non_const_ind = ((int)((((((blockIdx.y) * (blockDim.x)) + (threadIdx.x)) * 256U) + ((blockIdx.x) * 32U)) + ((unsigned)i)));
+# 717 "main.cu"
+(final_result_gmem[__cuda_local_var_191228_13_non_const_ind]) += (((((((_ZZ27generate_group_indicator_v2IiEvPT_PfPiS3_S2_S3_S3_S2_S3_S3_S3_S3_S2_S3_S3_S2_E6result)[(threadIdx.x)]))[(threadIdx.y)]))[i]) * ((float)(threadIdx.y)));
+# 718 "main.cu"
 } } 
-# 416 "main.cu"
+# 720 "main.cu"
 }}
 # 117 "/usr/local/cuda/bin/../targets/x86_64-linux/include/cub/block/../iterator/../util_device.cuh"
 __global__ __var_used__ void _ZN3cub11EmptyKernelIvEEvv(void){

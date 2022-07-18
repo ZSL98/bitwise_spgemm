@@ -310,6 +310,22 @@ __global__ void bit_wise_spgemm_3d(int split_k,
 }
 
 
+__global__ void generate_tiled_csr(
+                float *d_csr_values,
+                int *d_csr_columns,
+                int *d_csr_offsets
+            )
+{
+    int row_ind = blockIdx.y * blockDim.x + threadIdx.x;
+    int start_offset = d_csr_offsets[row_ind];
+
+    for (int i = 0; i < SPLIT_K; i++)
+    {
+
+    }
+}
+
+
 template <typename int32_or_64>
 __global__ void generate_group_indicator(
                 int32_or_64 *MatB_bit,
@@ -414,6 +430,283 @@ __global__ void generate_group_indicator(
                 if (((group_indicator[threadIdx.x][threadIdx.y][i] >> z) & 0x01) == 1)
                 {
                     result[threadIdx.x][threadIdx.y][z] += group[i][z];
+                    // result[threadIdx.x][threadIdx.y][z] += i;
+                }
+            }
+        }
+    }
+
+    // compute with cuda core
+    for (int i = 0; i < TILE_WIDTH; i++)
+    {
+        int ind = (blockIdx.y * blockDim.x + threadIdx.x) * SIZE_N + blockIdx.x * TILE_WIDTH + i;
+        final_result_gmem[ind] += result[threadIdx.x][threadIdx.y][i] * float(threadIdx.y);
+    }
+
+}
+
+
+__global__ void dense2tiledcsr_step1(
+                float *dA_dense_gmem,
+                int *tiled_csr_offset,
+                int *tiled_csr_column,
+                float *tiled_csr_value,
+                int *tiled_csr_nnz
+                )
+{
+    int bid = blockIdx.y * gridDim.x + blockIdx.x;
+    for (int i = 0; i < TILE_HEIGHT; i++)
+    {
+        for (int j = 0; j < SPLIT_K; j++)
+        {
+            int row_ind = blockIdx.y + i;
+            int entry = row_ind * SIZE_K + blockIdx.x * SPLIT_K + j;
+            if (dA_dense_gmem[entry] != 0.0f)
+            {
+                tiled_csr_nnz[bid]++;
+            }
+        }
+    }
+}
+
+// __global__ void dense2tiledcsr_step2(
+
+// )
+
+
+__global__ void csr2tiledcsr(
+                int tileA_cnt,
+                int64_t dA_nnz,
+                int *dA_csr_offset,
+                int *dA_csr_column,
+                float *dA_csr_value,
+                int *tiled_csr_offset,
+                int *tiled_csr_column,
+                float *tiled_csr_value,
+                int *tile_nnz_acc,
+                int *tile_nnz,
+                int *tile_row_nnz
+                )
+{
+    // __shared__ int tile_row_nnz[SIZE_M][SIZE_K/SPLIT_K];
+    for (int i = 0; i < SIZE_M+1; i++)
+    {
+        int start_offset = dA_csr_offset[i];
+        int end_offset = dA_csr_offset[i+1];
+        for (int j = start_offset; j < end_offset; j++)
+        {
+            int tileA_y = i / TILE_HEIGHT;
+            int tileA_x = dA_csr_column[j] / SPLIT_K;
+            int tileA_id = tileA_y * (SIZE_K / SPLIT_K) + tileA_x;
+            tile_nnz[tileA_id]++;
+        }
+    }
+
+    int tmp_cnt = 0;
+    for (int i = 0; i < tileA_cnt; i++)
+    {
+        tile_nnz_acc[i] = tmp_cnt;
+        tmp_cnt += tile_nnz[i];
+    }
+    tile_nnz_acc[tileA_cnt] = tmp_cnt;
+
+    int tmp_tile_nnz[(SIZE_M/TILE_HEIGHT)*(SIZE_K/SPLIT_K)];
+
+    for (int i = 0; i < SIZE_M+1; i++)
+    {
+        int start_offset = dA_csr_offset[i];
+        int end_offset = dA_csr_offset[i+1];
+        for (int j = start_offset; j < end_offset; j++)
+        {
+            int tileA_y = i / TILE_HEIGHT;
+            int tileA_x = dA_csr_column[j] / SPLIT_K;
+            int tileA_id = tileA_y * (SIZE_K / SPLIT_K) + tileA_x;
+            tile_row_nnz[i * (SIZE_K / SPLIT_K) + tileA_x]++;
+
+            // int tile_entry_y = i % TILE_HEIGHT;
+            int tile_entry_x = dA_csr_column[j] % SPLIT_K;
+            // int tile_entry = tile_entry_y * SPLIT_K + tile_entry_x;
+
+            int tile_offset = tile_nnz_acc[tileA_id];
+            int entry = tile_offset + tmp_tile_nnz[tileA_id];
+            tmp_tile_nnz[tileA_id]++;
+
+            // printf("entry: %d\n", entry);
+            tiled_csr_value[entry] = dA_csr_value[j];
+            tiled_csr_column[entry] = tile_entry_x;
+        }
+    }
+
+    for (int i = 0; i < tileA_cnt; i++)
+    {
+        int tileA_y = i / (SIZE_K/SPLIT_K);
+        int tileA_x = i % (SIZE_K/SPLIT_K);
+        int tile_nnz_tmp = 0;
+        for (int j = 0; j < TILE_HEIGHT+1; j++)
+        {
+            tiled_csr_offset[(TILE_HEIGHT+1)*i + j] = tile_nnz_tmp; 
+            tile_nnz_tmp += tile_row_nnz[(tileA_y*TILE_HEIGHT+j) * (SIZE_K / SPLIT_K) + tileA_x];
+        } 
+    }
+}
+
+
+template <typename int32_or_64>
+__global__ void generate_group_indicator_v2(
+                int32_or_64 *MatB_bit,
+                float *dA_dense_gmem,
+                int *group_id_gmem,
+                int *spilled_row_hash_table_reverse_gmem,
+                float *d_group_ele_row_val,
+                int *spilled_row_cnt_offset,
+                int *spilled_nnz_offset,
+                float *tile_spilled_csrVal,
+                int *tile_spilled_csrColInd,
+                int *tile_spilled_csrRowPtr,
+                int *dA_tiled_csr_offset_gmem,
+                int *dA_tiled_csr_column_gmem,
+                float *dA_tiled_csr_value_gmem,
+                int *dA_tile_nnz_acc,
+                int *dA_tile_nnz,
+                float *final_result_gmem
+            )
+{
+    // __shared__ float dA_dense_smem[TILE_HEIGHT][SPLIT_K];
+    __shared__ int group_id_smem[SPLIT_K];
+    __shared__ int spilled_row_hash_table_reverse_smem[SPLIT_K];
+    __shared__ int32_or_64 group_indicator[TILE_HEIGHT][BIT_WIDTH][MAX_GROUP_NUM];
+    __shared__ float result[TILE_HEIGHT][BIT_WIDTH][TILE_WIDTH];
+    __shared__ int32_or_64 MatB_bit_smem[SPLIT_K];
+
+    __shared__ int tiled_csr_offset_smem[TILE_HEIGHT+1];
+    __shared__ int tiled_csr_column_smem[MAX_TILEA_NNZ];
+    __shared__ float tiled_csr_value_smem[MAX_TILEA_NNZ];
+
+    for (int i = 0; i < MAX_TILEA_NNZ; i++)
+    {
+        tiled_csr_column_smem[i] = 0;
+        tiled_csr_value_smem[i] = 0;
+    }
+    
+    int row_group_id;
+    int bid = blockIdx.x + blockIdx.y * gridDim.x;  
+    int tid = (threadIdx.y * blockDim.x) + threadIdx.x;
+    int group[MAX_GROUP_NUM];
+    
+    for (int k = 0; k < SIZE_K/SPLIT_K; k++)
+    {
+        int tileA_id = gridDim.x * blockIdx.y + k;
+        int tileB_id = k * gridDim.x + blockIdx.x;
+
+        // Load MatA's csr data into shared memory
+        for (int i = 0; i < TILE_HEIGHT+1; i++)
+        {
+            tiled_csr_offset_smem[i] = dA_tiled_csr_offset_gmem[tileA_id*(TILE_HEIGHT+1)+i];
+        }
+        for (int i = 0; i < dA_tile_nnz[tileA_id]; i++)
+        {
+            tiled_csr_value_smem[i] = dA_tiled_csr_value_gmem[dA_tile_nnz_acc[tileA_id]+i];
+            tiled_csr_column_smem[i] = dA_tiled_csr_column_gmem[dA_tile_nnz_acc[tileA_id]+i];
+        }
+
+        if (k == 0 && tid == 0 && bid == 0)
+        {
+            for (int i = 0; i < TILE_HEIGHT+1; i++)
+            {
+                printf("tiled_csr_offset_smem: %d, i: %d, bid: %d\n", tiled_csr_offset_smem[i], i, bid);
+            }
+            // for (int i = 0; i < dA_tile_nnz[tileA_id]; i++)
+            // {
+            //     printf("tiled_csr_column_smem: %d, i: %d, bid: %d\n", tiled_csr_column_smem[i], i, bid);
+            // }
+            // for (int i = 0; i < dA_tile_nnz[tileA_id]; i++)
+            // {
+            //     printf("tiled_csr_value_smem: %f, i: %d, bid: %d\n", tiled_csr_value_smem[i], i, bid);
+            // }
+        }
+
+
+        // Load MatB's group data into shared memory
+        if (k % 8 == 0)
+        {
+            for (int j = 0; j < 8; j++)
+            {
+                for (int i = 0; i < MAX_GROUP_NUM; i++)
+                {
+                    group[i] = d_group_ele_row_val[(MAX_GROUP_NUM * (j * gridDim.x + blockIdx.x) + i) * TILE_WIDTH + threadIdx.x];
+                }
+            }
+        }
+
+        // Load MatB's bit mask data into shared memory
+        if (threadIdx.x == 0 && threadIdx.y == 0)
+        {
+            for (int z = 0; z < TILE_WIDTH; z++)
+            {
+                int entry_B = ((SPLIT_K * k) + z) * gridDim.x + blockIdx.x;
+                MatB_bit_smem[z] = MatB_bit[entry_B];
+            }
+        }
+
+        // Load MatB's group information into shared memory
+        // SPLIT_K/blockDim.x = 256/32 = 8 = blockDim.y
+        int rowB_ind = k * SPLIT_K + tid;
+        int entry = rowB_ind * gridDim.x + blockIdx.x;
+        group_id_smem[tid] = group_id_gmem[entry];
+        spilled_row_hash_table_reverse_smem[tid] 
+            = spilled_row_hash_table_reverse_gmem[tid + tileB_id * SPLIT_K];
+
+        __syncthreads();
+
+        int rowA_ind = blockIdx.y * blockDim.x + threadIdx.x;
+        for (int z = tiled_csr_offset_smem[threadIdx.x]; z < tiled_csr_offset_smem[threadIdx.x+1]; z++)
+        {
+            int entry_col = tiled_csr_column_smem[z];
+            if (k == 0 && tid == 0 && bid == 0)
+            {
+                printf("entry_col: %d\n", entry_col);
+            }
+            int tmp = (__float_as_int(tiled_csr_value_smem[z]) >> threadIdx.y) & 1 == 0x01;
+            // if ((__float_as_int(dA_dense_gmem[entry]) >> threadIdx.y) & 1 == 0x01)
+            if ((threadIdx.y % 2 + entry_col % 2) % 2 == 0)
+            {
+                row_group_id = group_id_smem[entry_col];
+                if (row_group_id != -1)
+                {
+                    atomicOr(&group_indicator[threadIdx.x][threadIdx.y][row_group_id], MatB_bit_smem[entry_col]);
+                }
+                else 
+                {
+                    // Current row_ind_in_tile in MatrixB is the spilled row
+                    // Perform the extra computation
+                    int row_in_csr = spilled_row_hash_table_reverse_smem[entry_col];
+                    int start_offset;
+                    if (row_in_csr == 0)
+                    {
+                        start_offset = 0;
+                    }
+                    else 
+                    {
+                        start_offset = tile_spilled_csrRowPtr[spilled_row_cnt_offset[tileB_id] + row_in_csr - 1];
+                    }
+                    for (int j = start_offset; j < tile_spilled_csrRowPtr[spilled_row_cnt_offset[tileB_id] + row_in_csr]; j++)
+                    {
+                        int col_ind = tile_spilled_csrColInd[spilled_nnz_offset[tileB_id] + j];
+                        result[threadIdx.x][threadIdx.y][col_ind] += tile_spilled_csrVal[spilled_nnz_offset[tileB_id] + j];
+                    }
+                }
+            }
+        }
+
+        __syncthreads();
+
+        for (int z = 0; z < TILE_HEIGHT; z++)
+        {
+            for (int i = 0; i < MAX_GROUP_NUM; i++)
+            {
+                if (((group_indicator[z][threadIdx.y][i] >> threadIdx.x) & 0x01) == 1)
+                {
+                    result[z][threadIdx.y][threadIdx.x] += group[i];
                     // result[threadIdx.x][threadIdx.y][z] += i;
                 }
             }
@@ -846,6 +1139,31 @@ int main()
     CHECK_CUSPARSE( cusparseDestroySpMat(matA_sp) )
     // CHECK_CUSPARSE( cusparseDestroy(handle) )
 
+    printf("Transform CSR to tiled CSR\n");
+    int tileA_cnt = (SIZE_M/TILE_HEIGHT)*(SIZE_K/SPLIT_K);
+    int *dA_tiled_csr_offset, *dA_tiled_csr_column;
+    int *dA_tile_nnz_acc, *dA_tile_nnz, *dA_tile_row_nnz;
+    float *dA_tiled_csr_value;
+    CHECK_CUDA( cudaMalloc((void**) &dA_tile_nnz,         sizeof(int) * tileA_cnt) )
+    CHECK_CUDA( cudaMalloc((void**) &dA_tile_nnz_acc,     sizeof(int) * (tileA_cnt+1)) )
+    CHECK_CUDA( cudaMalloc((void**) &dA_tile_row_nnz,     sizeof(int) * SIZE_M * SIZE_K / SPLIT_K) )
+    CHECK_CUDA( cudaMalloc((void**) &dA_tiled_csr_offset, sizeof(int) * tileA_cnt * (TILE_HEIGHT+1)) )
+    CHECK_CUDA( cudaMalloc((void**) &dA_tiled_csr_column, sizeof(int) * nnzA) )
+    CHECK_CUDA( cudaMalloc((void**) &dA_tiled_csr_value,  sizeof(float) * nnzA) )
+
+    csr2tiledcsr<<<1, 1>>>(tileA_cnt, 
+                            nnzA, 
+                            dA_csr_offsets, 
+                            dA_csr_columns, 
+                            dA_csr_values,
+                            dA_tiled_csr_offset,
+                            dA_tiled_csr_column,
+                            dA_tiled_csr_value,
+                            dA_tile_nnz_acc,
+                            dA_tile_nnz,
+                            dA_tile_row_nnz
+                            );
+
 
     int64_t nnzB;
     int64_t num_rows_tmpB, num_cols_tmpB;
@@ -1018,7 +1336,7 @@ int main()
     //                                 );
     printf("Generate group indicator\n");
     dim3 grid3(SIZE_N/TILE_WIDTH, SIZE_M/TILE_HEIGHT, 1), block3(TILE_HEIGHT, BIT_WIDTH, 1);
-    generate_group_indicator<<<grid3, block3>>>(dB_bitmask, 
+    generate_group_indicator_v2<<<grid3, block3>>>(dB_bitmask, 
                                                 dA_dense, 
                                                 dB_group_id, 
                                                 dB_spilled_row_hash_table_reverse_gmem,
@@ -1028,6 +1346,11 @@ int main()
                                                 dB_tile_spilled_csrVal,                // output
                                                 dB_tile_spilled_csrColInd,             // output
                                                 dB_tile_spilled_csrRowPtr,             // output
+                                                dA_tiled_csr_offset,
+                                                dA_tiled_csr_column,
+                                                dA_tiled_csr_value,
+                                                dA_tile_nnz_acc,
+                                                dA_tile_nnz,
                                                 dC_final_result_gmem
                                                 );
 
@@ -1171,6 +1494,34 @@ int main()
         for (int i = 0; i < nnzA; i++)
         {
             std::cout << "hA_csr_values: " << hA_csr_values[i] << std::endl;
+        }
+
+        int *hA_tiled_csr_offset = (int*)malloc(sizeof(int) * tileA_cnt * (TILE_HEIGHT+1));
+        int *hA_tiled_csr_column = (int*)malloc(sizeof(int) * nnzA);
+        float *hA_tiled_csr_value = (float*)malloc(sizeof(float) * nnzA);
+        int *hA_tile_nnz = (int*)malloc(sizeof(int) * tileA_cnt);
+        int *hA_tile_nnz_acc = (int*)malloc(sizeof(int) * (tileA_cnt+1));
+
+        cudaMemcpy(hA_tiled_csr_value, dA_tiled_csr_value, sizeof(float) * nnzA, cudaMemcpyDeviceToHost);
+        cudaMemcpy(hA_tiled_csr_column, dA_tiled_csr_column, sizeof(int) * nnzA, cudaMemcpyDeviceToHost);
+        cudaMemcpy(hA_tiled_csr_offset, dA_tiled_csr_offset, sizeof(int) * tileA_cnt * (TILE_HEIGHT+1), cudaMemcpyDeviceToHost);
+        cudaMemcpy(hA_tile_nnz, dA_tile_nnz, sizeof(int) * tileA_cnt, cudaMemcpyDeviceToHost);
+        cudaMemcpy(hA_tile_nnz_acc, dA_tile_nnz_acc, sizeof(int) * (tileA_cnt + 1), cudaMemcpyDeviceToHost);
+
+        printf("nnzA: %ld\n", nnzA);
+        for (int i = 0; i < tileA_cnt+1; i++)
+        {
+            printf("hA_tile_nnz_acc: %d\n", hA_tile_nnz_acc[i]);
+        }
+
+        for (int i = 0; i < nnzA; i++)
+        {
+            printf("hA_tiled_csr_value: %f\n", hA_tiled_csr_value[i]);
+        }
+
+        for (int i = 0; i < tileA_cnt * (TILE_HEIGHT+1); i++)
+        {
+            printf("hA_tiled_csr_offset: %d\n", hA_tiled_csr_offset[i]);
         }
     }
 
