@@ -595,35 +595,28 @@ __global__ void generate_group_indicator_v2(
     
     for (int k = 0; k < SIZE_K/SPLIT_K; k++)
     {
-        int tileA_id = gridDim.x * blockIdx.y + k;
+        int tileA_id = SIZE_K/SPLIT_K * blockIdx.y + k;
         int tileB_id = k * gridDim.x + blockIdx.x;
 
-        // Load MatA's csr data into shared memory
-        for (int i = 0; i < TILE_HEIGHT+1; i++)
-        {
-            tiled_csr_offset_smem[i] = dA_tiled_csr_offset_gmem[tileA_id*(TILE_HEIGHT+1)+i];
-        }
-        for (int i = 0; i < dA_tile_nnz[tileA_id]; i++)
-        {
-            tiled_csr_value_smem[i] = dA_tiled_csr_value_gmem[dA_tile_nnz_acc[tileA_id]+i];
-            tiled_csr_column_smem[i] = dA_tiled_csr_column_gmem[dA_tile_nnz_acc[tileA_id]+i];
-        }
+        int tile_nnz = dA_tile_nnz[tileA_id];
+        int tile_nnz_acc = dA_tile_nnz_acc[tileA_id];
 
-        if (k == 0 && tid == 0 && bid == 0)
+
+        // Load MatA's csr data into shared memory
+        if (tid == 0)
         {
             for (int i = 0; i < TILE_HEIGHT+1; i++)
             {
-                printf("tiled_csr_offset_smem: %d, i: %d, bid: %d\n", tiled_csr_offset_smem[i], i, bid);
+                tiled_csr_offset_smem[i] = dA_tiled_csr_offset_gmem[tileA_id*(TILE_HEIGHT+1)+i];
             }
-            // for (int i = 0; i < dA_tile_nnz[tileA_id]; i++)
-            // {
-            //     printf("tiled_csr_column_smem: %d, i: %d, bid: %d\n", tiled_csr_column_smem[i], i, bid);
-            // }
-            // for (int i = 0; i < dA_tile_nnz[tileA_id]; i++)
-            // {
-            //     printf("tiled_csr_value_smem: %f, i: %d, bid: %d\n", tiled_csr_value_smem[i], i, bid);
-            // }
+            for (int i = 0; i < tile_nnz; i++)
+            {
+                tiled_csr_value_smem[i] = dA_tiled_csr_value_gmem[tile_nnz_acc+i];
+                tiled_csr_column_smem[i] = dA_tiled_csr_column_gmem[tile_nnz_acc+i];
+            }
         }
+
+        __syncthreads();
 
 
         // Load MatB's group data into shared memory
@@ -638,21 +631,16 @@ __global__ void generate_group_indicator_v2(
             }
         }
 
-        // Load MatB's bit mask data into shared memory
-        if (threadIdx.x == 0 && threadIdx.y == 0)
-        {
-            for (int z = 0; z < TILE_WIDTH; z++)
-            {
-                int entry_B = ((SPLIT_K * k) + z) * gridDim.x + blockIdx.x;
-                MatB_bit_smem[z] = MatB_bit[entry_B];
-            }
-        }
-
-        // Load MatB's group information into shared memory
         // SPLIT_K/blockDim.x = 256/32 = 8 = blockDim.y
         int rowB_ind = k * SPLIT_K + tid;
         int entry = rowB_ind * gridDim.x + blockIdx.x;
+
+        // Load MatB's group information into shared memory
         group_id_smem[tid] = group_id_gmem[entry];
+
+        // Load MatB's bit mask data into shared memory
+        MatB_bit_smem[tid] = MatB_bit[entry];
+
         spilled_row_hash_table_reverse_smem[tid] 
             = spilled_row_hash_table_reverse_gmem[tid + tileB_id * SPLIT_K];
 
@@ -662,10 +650,6 @@ __global__ void generate_group_indicator_v2(
         for (int z = tiled_csr_offset_smem[threadIdx.x]; z < tiled_csr_offset_smem[threadIdx.x+1]; z++)
         {
             int entry_col = tiled_csr_column_smem[z];
-            if (k == 0 && tid == 0 && bid == 0)
-            {
-                printf("entry_col: %d\n", entry_col);
-            }
             int tmp = (__float_as_int(tiled_csr_value_smem[z]) >> threadIdx.y) & 1 == 0x01;
             // if ((__float_as_int(dA_dense_gmem[entry]) >> threadIdx.y) & 1 == 0x01)
             if ((threadIdx.y % 2 + entry_col % 2) % 2 == 0)
@@ -1517,6 +1501,11 @@ int main()
         for (int i = 0; i < nnzA; i++)
         {
             printf("hA_tiled_csr_value: %f\n", hA_tiled_csr_value[i]);
+        }
+
+        for (int i = 0; i < nnzA; i++)
+        {
+            printf("hA_tiled_csr_column: %d\n", hA_tiled_csr_column[i]);
         }
 
         for (int i = 0; i < tileA_cnt * (TILE_HEIGHT+1); i++)

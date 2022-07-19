@@ -17,16 +17,16 @@
 #define MAT_PTR_TYPE float
 #endif
 
-#define SPARSITY 99
+#define SPARSITY 98
 #define BIT_WIDTH 8
 #define MAX_GROUP_NUM 8
 #define TILE_HEIGHT 32
 #define TILE_WIDTH 32
 #define SIZE_M 1024
-#define SIZE_K 256
-#define SIZE_N 256
+#define SIZE_K 1024
+#define SIZE_N 1024
 #define SPLIT_K 256
-#define MAX_TILEA_NNZ 256
+#define MAX_TILEA_NNZ 1024
 
 #define PRINT_MAT_A_INFO false
 #define PRINT_MAT_B_INFO false
