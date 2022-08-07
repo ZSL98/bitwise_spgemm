@@ -22,9 +22,9 @@
 #define MAX_GROUP_NUM 8
 #define TILE_HEIGHT 32
 #define TILE_WIDTH 32
-#define SIZE_M 512
-#define SIZE_K 512
-#define SIZE_N 512
+#define SIZE_M 1024
+#define SIZE_K 1024
+#define SIZE_N 1024
 #define SPLIT_K 256
 #define MAX_TILEA_NNZ 1024
 

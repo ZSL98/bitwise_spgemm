@@ -134,7 +134,7 @@ __global__ void generate_groups(int32_or_64 *MatB_bit,
         // dB_tile_spilled_csrColInd[bid] = (int*)malloc(spilled_nnz[bid]);
         // dB_tile_spilled_csrRowPtr[bid] = (int*)malloc(spilled_row_cnt[bid]+1);
 
-        printf("bid: %d, nnz: %d\n", bid, spilled_nnz[bid]);
+        // printf("bid: %d, nnz: %d\n", bid, spilled_nnz[bid]);
 
         // load the group information into global memory
         for (int i = 0; i < MAX_GROUP_NUM; i++)
@@ -789,7 +789,7 @@ int main()
     {
         int *hB_bitmask = (int*)malloc(sizeof(int) * k * n / 32);
         cudaMemcpy(hB_bitmask, dB_bitmask, k * n / 32 * sizeof(int), cudaMemcpyDeviceToHost);
-        printintMatrix_32(k, hB_bitmask, "B_bitmask");
+        // printintMatrix_32(k, hB_bitmask, "B_bitmask");
     }
 
     printf("Matrix A dense2CSR...\n");
@@ -963,8 +963,8 @@ int main()
     CHECK_CUDA( cudaMalloc((void**) &dB_spilled_row_cnt_offset,  tileB_cnt * sizeof(int)) )
     for (int i = 0; i < tileB_cnt; i++)
     {
-        std::cout << "hB_spilled_nnz     -- " << i << ": " << hB_spilled_nnz[i] << std::endl;
-        std::cout << "hB_spilled_row_cnt -- " << i << ": " << hB_spilled_row_cnt[i] << std::endl;
+        // std::cout << "hB_spilled_nnz     -- " << i << ": " << hB_spilled_nnz[i] << std::endl;
+        // std::cout << "hB_spilled_row_cnt -- " << i << ": " << hB_spilled_row_cnt[i] << std::endl;
         hB_spilled_nnz_offset[i] = nnz_cnt;
         hB_spilled_row_cnt_offset[i] = row_cnt;
         nnz_cnt += hB_spilled_nnz[i];
@@ -1044,7 +1044,7 @@ int main()
     //                                 );
     printf("Generate group indicator\n");
     dim3 grid3(SIZE_N/TILE_WIDTH, SIZE_M/TILE_HEIGHT, 1), block3(TILE_HEIGHT, BIT_WIDTH, 1);
-    generate_group_indicator_v3<<<grid3, block3>>>(dB_bitmask, 
+    generate_group_indicator_smem_sparse<<<grid3, block3>>>(dB_bitmask, 
                                                 dA_dense, 
                                                 dB_group_id, 
                                                 dB_spilled_row_hash_table_reverse_gmem,
@@ -1296,10 +1296,7 @@ int main()
         std::cout << "A random number: " << rand() % 100 << std::endl;
         int *hB_group_ele_ind = (int*)malloc(k * n / SPLIT_K * MAX_GROUP_NUM * sizeof(int));
         cudaMemcpy(hB_group_ele_ind, dB_group_ele_ind, k * n / SPLIT_K * MAX_GROUP_NUM * sizeof(int), cudaMemcpyDeviceToHost);
-        // for (int i = 0; i < 32; i++)
-        // {
-        //     std::cout << std::left << std::setw(4) << hB_group_ele_ind[i] << std::endl;
-        // }
+
     }
     
     // size_t *size;
