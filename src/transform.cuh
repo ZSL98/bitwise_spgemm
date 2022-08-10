@@ -594,6 +594,7 @@ template <typename int32_or_64>
 __global__ void generate_group_indicator_smem_sparse(
                 int32_or_64 *MatB_bit,
                 float *dA_dense_gmem,
+                float *dB_dense_gmem,
                 int *group_id_gmem,
                 int *spilled_row_hash_table_reverse_gmem,
                 float *d_group_ele_row_val,
@@ -617,11 +618,14 @@ __global__ void generate_group_indicator_smem_sparse(
     __shared__ int tiled_csr_offset_smem[TILE_HEIGHT+1];
     __shared__ int tiled_csr_column_smem[MAX_TILEA_NNZ];
     __shared__ float tiled_csr_value_smem[MAX_TILEA_NNZ];
+    __shared__ float group[TILE_WIDTH][MAX_GROUP_NUM];
 
     // intermediate buffers
     // __shared__ int32_or_64 group_indicator[TILE_HEIGHT][BIT_WIDTH][MAX_GROUP_NUM];
-    __shared__ float result[TILE_HEIGHT][BIT_WIDTH][TILE_WIDTH];
+    // __shared__ float result[TILE_HEIGHT][BIT_WIDTH][TILE_WIDTH];
+    float result[TILE_WIDTH];
     int32_or_64 group_indicator[MAX_GROUP_NUM];
+    int32_or_64 or_group_indicator = 0;
 
     // for (int i = 0; i < MAX_TILEA_NNZ; i++)
     // {
@@ -632,16 +636,38 @@ __global__ void generate_group_indicator_smem_sparse(
     int row_group_id;
     // int bid = blockIdx.x + blockIdx.y * gridDim.x;
     int tid = (threadIdx.y * blockDim.x) + threadIdx.x;
-    int group[MAX_GROUP_NUM];
+    // int group[MAX_GROUP_NUM];
 
+    // // Declare the fragments
+    // nvcuda::wmma::fragment<wmma::matrix_a, 16, 16, 16, half, wmma::col_major> a_frag;
+    // nvcuda::wmma::fragment<wmma::matrix_b, 16, 16, 16, half, wmma::row_major> b_frag;
+    // nvcuda::wmma::fragment<wmma::accumulator, 16, 16, 16, float> c_frag;
+
+    // // Initialize the output to zero
+    // nvcuda::wmma::fill_fragment(c_frag, 0.0f);
+
+    // // Load the inputs
+    // nvcuda::wmma::load_matrix_sync(a_frag, (half *)&group[0][0], 16);
+    // nvcuda::wmma::load_matrix_sync(b_frag, (half *)&group[0][0], 16);
+
+    // // Perform the matrix multiplication
+    // nvcuda::wmma::mma_sync(c_frag, a_frag, b_frag, c_frag);
+
+    // // Store the output
+    // nvcuda::wmma::store_matrix_sync(c, c_frag, 16, wmma::mem_row_major);
+
+    int tmp;
+    int rowB_ind;
+    int entry;
+    int col_ind, ind, entry_col;
+    int tileA_id, tileB_id, tile_nnz_acc;
     
     for (int k = 0; k < SIZE_K/SPLIT_K; k++)
     {
-        int tileA_id = SIZE_K/SPLIT_K * blockIdx.y + k;
-        int tileB_id = k * gridDim.x + blockIdx.x;
-
+        tileA_id = SIZE_K/SPLIT_K * blockIdx.y + k;
+        tileB_id = k * gridDim.x + blockIdx.x;
+        tile_nnz_acc = dA_tile_nnz_acc[tileA_id];
         // int tile_nnz = dA_tile_nnz[tileA_id];
-        int tile_nnz_acc = dA_tile_nnz_acc[tileA_id];
 
         // Load MatA's csr data into shared memory
         if (threadIdx.y == 0)
@@ -650,7 +676,7 @@ __global__ void generate_group_indicator_smem_sparse(
         }
         if (tid == 0)
         {
-            tiled_csr_offset_smem[32] = dA_tiled_csr_offset_gmem[tileA_id*(TILE_HEIGHT+1)+32];
+            tiled_csr_offset_smem[TILE_HEIGHT] = dA_tiled_csr_offset_gmem[tileA_id*(TILE_HEIGHT+1)+TILE_HEIGHT];
         }
         for (int i = 0; i < MAX_TILEA_NNZ/256; i++)
         {
@@ -658,18 +684,21 @@ __global__ void generate_group_indicator_smem_sparse(
             tiled_csr_column_smem[tid + i*256] = dA_tiled_csr_column_gmem[tile_nnz_acc + tid + i*256];
         }
 
-        // Load MatB's group data into registers
-        if (k % 8 == 0)
-        {
-            for (int i = 0; i < MAX_GROUP_NUM; i++)
-            {
-                group[i] = d_group_ele_row_val[(MAX_GROUP_NUM * (threadIdx.y * gridDim.x + blockIdx.x) + i) * TILE_WIDTH + threadIdx.x];
-            }
-        }
+        // // Load MatB's group data into registers
+        // if (k % 8 == 0)
+        // {
+        //     for (int i = 0; i < MAX_GROUP_NUM; i++)
+        //     {
+        //         group[i] = d_group_ele_row_val[(MAX_GROUP_NUM * (threadIdx.y * gridDim.x + blockIdx.x) + i) * TILE_WIDTH + threadIdx.x];
+        //     }
+        // }
+
+        // Load MatB's group data into shared memory
+        group[threadIdx.x][threadIdx.y] = d_group_ele_row_val[(MAX_GROUP_NUM * tileB_id + threadIdx.y) * TILE_WIDTH + threadIdx.x];
 
         // SPLIT_K/blockDim.x = 256/32 = 8 = blockDim.y
-        int rowB_ind = k * SPLIT_K + tid;
-        int entry = rowB_ind * gridDim.x + blockIdx.x;
+        rowB_ind = k * SPLIT_K + tid;
+        entry = rowB_ind * gridDim.x + blockIdx.x;
 
         // Load MatB's group information into shared memory
         group_id_smem[tid] = group_id_gmem[entry];
@@ -685,8 +714,8 @@ __global__ void generate_group_indicator_smem_sparse(
         // int rowA_ind = blockIdx.y * blockDim.x + threadIdx.x;
         for (int z = tiled_csr_offset_smem[threadIdx.x]; z < tiled_csr_offset_smem[threadIdx.x+1]; z++)
         {
-            int entry_col = tiled_csr_column_smem[z];
-            int tmp = (__float_as_int(tiled_csr_value_smem[z]) >> threadIdx.y) & 1 == 0x01;
+            entry_col = tiled_csr_column_smem[z];
+            tmp = (__float_as_int(tiled_csr_value_smem[z]) >> threadIdx.y) & 1 == 0x01;
             // if ((__float_as_int(dA_dense_gmem[entry]) >> threadIdx.y) & 1 == 0x01)
             if ((threadIdx.y % 2 + entry_col % 2) % 2 == 0)
             {
@@ -700,21 +729,26 @@ __global__ void generate_group_indicator_smem_sparse(
                 {
                     // Current row_ind_in_tile in MatrixB is the spilled row
                     // Perform the extra computation
-                    int row_in_csr = spilled_row_hash_table_reverse_smem[entry_col];
-                    int start_offset;
-                    if (row_in_csr == 0)
+                    for (int i = 0; i < TILE_WIDTH; i++)
                     {
-                        start_offset = 0;
+                        result[i] += dB_dense_gmem[(k * SPLIT_K + entry_col) * SIZE_N + blockIdx.x * TILE_WIDTH + i];
                     }
-                    else 
-                    {
-                        start_offset = tile_spilled_csrRowPtr[spilled_row_cnt_offset[tileB_id] + row_in_csr - 1];
-                    }
-                    for (int j = start_offset; j < tile_spilled_csrRowPtr[spilled_row_cnt_offset[tileB_id] + row_in_csr]; j++)
-                    {
-                        int col_ind = tile_spilled_csrColInd[spilled_nnz_offset[tileB_id] + j];
-                        result[threadIdx.x][threadIdx.y][col_ind] += tile_spilled_csrVal[spilled_nnz_offset[tileB_id] + j];
-                    }
+                    // int row_in_csr = spilled_row_hash_table_reverse_smem[entry_col];
+                    // int start_offset;
+                    // if (row_in_csr == 0)
+                    // {
+                    //     start_offset = 0;
+                    // }
+                    // else 
+                    // {
+                    //     start_offset = tile_spilled_csrRowPtr[spilled_row_cnt_offset[tileB_id] + row_in_csr - 1];
+                    // }
+                    // for (int j = start_offset; j < tile_spilled_csrRowPtr[spilled_row_cnt_offset[tileB_id] + row_in_csr]; j++)
+                    // {
+                    //     col_ind = tile_spilled_csrColInd[spilled_nnz_offset[tileB_id] + j];
+                    //     // result[threadIdx.x][threadIdx.y][col_ind] += tile_spilled_csrVal[spilled_nnz_offset[tileB_id] + j];
+                    //     result[col_ind] += tile_spilled_csrVal[spilled_nnz_offset[tileB_id] + j];
+                    // }
                 }
             }
         }
@@ -726,20 +760,27 @@ __global__ void generate_group_indicator_smem_sparse(
         //     for (int i = 0; i < MAX_GROUP_NUM; i++)
         //     {
         //         if (((group_indicator[z][threadIdx.y][i] >> threadIdx.x) & 0x01) == 1)
-        //         {
+        //         {    
         //             result[z][threadIdx.y][threadIdx.x] += group[i];
         //             // result[threadIdx.x][threadIdx.y][z] += i;
         //         }
         //     }
         // }
 
-        for (int z = 0; z < TILE_WIDTH; z++)
+        #pragma unroll
+        for (int i = 0; i < MAX_GROUP_NUM; i++)
         {
-            for (int i = 0; i < MAX_GROUP_NUM; i++)
+            if (group_indicator[i] == 0)
+            {
+                continue;
+            }
+            #pragma unroll
+            for (int z = 0; z < TILE_WIDTH; z++)
             {
                 if (((group_indicator[i] >> z) & 0x01) == 1)
                 {
-                    result[threadIdx.x][threadIdx.y][z] += group[i];
+                    result[z] += group[z][i];
+                    // result[threadIdx.x][threadIdx.y][z] += group[z][i];
                     // result[threadIdx.x][threadIdx.y][z] += i;
                 }
             }
@@ -747,10 +788,12 @@ __global__ void generate_group_indicator_smem_sparse(
     }
 
     // compute with cuda core
+    #pragma unroll
     for (int i = 0; i < TILE_WIDTH; i++)
     {
-        int ind = (blockIdx.y * blockDim.x + threadIdx.x) * SIZE_N + blockIdx.x * TILE_WIDTH + i;
-        final_result_gmem[ind] += result[threadIdx.x][threadIdx.y][i] * float(threadIdx.y);
+        ind = (blockIdx.y * blockDim.x + threadIdx.x) * SIZE_N + blockIdx.x * TILE_WIDTH + i;
+        final_result_gmem[ind] += result[i] * float(threadIdx.y);
+        // final_result_gmem[ind] += result[threadIdx.x][threadIdx.y][i] * float(threadIdx.y);
     }
 
 }

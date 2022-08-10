@@ -8,6 +8,9 @@
 #include <bitset>
 
 #include <cusparse.h>
+#include <mma.h>
+
+// using namespace nvcuda;
 
 #ifndef MAT_VAL_TYPE
 #define MAT_VAL_TYPE double

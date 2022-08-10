@@ -1045,7 +1045,8 @@ int main()
     printf("Generate group indicator\n");
     dim3 grid3(SIZE_N/TILE_WIDTH, SIZE_M/TILE_HEIGHT, 1), block3(TILE_HEIGHT, BIT_WIDTH, 1);
     generate_group_indicator_smem_sparse<<<grid3, block3>>>(dB_bitmask, 
-                                                dA_dense, 
+                                                dA_dense,
+                                                dB_dense, 
                                                 dB_group_id, 
                                                 dB_spilled_row_hash_table_reverse_gmem,
                                                 dB_group_ele_val,
