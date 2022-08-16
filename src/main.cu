@@ -1043,8 +1043,9 @@ int main()
     //                                 dC_final_result_gmem
     //                                 );
     printf("Generate group indicator\n");
-    dim3 grid3(SIZE_N/TILE_WIDTH, SIZE_M/TILE_HEIGHT, 1), block3(TILE_HEIGHT, BIT_WIDTH, 1);
-    generate_group_indicator_smem_sparse<<<grid3, block3>>>(dB_bitmask, 
+    // dim3 grid3(SIZE_N/TILE_WIDTH, SIZE_M/TILE_HEIGHT, 1), block3(TILE_HEIGHT, BIT_WIDTH, 1);
+    dim3 grid_2d(SIZE_N/TILE_WIDTH, SIZE_M/TILE_HEIGHT, 1), block_1d(TILE_HEIGHT, 1, 1);
+    generate_group_indicator_smem_sparse_1dthread<<<grid_2d, block_1d>>>(dB_bitmask, 
                                                 dA_dense,
                                                 dB_dense, 
                                                 dB_group_id, 
