@@ -1016,6 +1016,12 @@ int main()
     float *dC_final_result_gmem;
     CHECK_CUDA( cudaMalloc((void**) &dC_final_result_gmem,  SIZE_M * SIZE_N * sizeof(float)) )
 
+    int tileC_cnt = SIZE_M * SIZE_N / TILE_HEIGHT / TILE_WIDTH;
+    int *dC_spilled_row_cnt, *dC_spilled_nnz, *dC_output_group_idx;
+    CHECK_CUDA( cudaMalloc((void**) &dC_spilled_row_cnt,  tileC_cnt * sizeof(int)) )
+    CHECK_CUDA( cudaMalloc((void**) &dC_spilled_nnz,  tileC_cnt * sizeof(int)) )
+    CHECK_CUDA( cudaMalloc((void**) &dC_output_group_idx,  SIZE_M * SIZE_N / TILE_WIDTH * sizeof(int)) )
+
     cudaEvent_t start, end, cusparse_start, cusparse_end;
     cudaEventCreate(&start);
     cudaEventCreate(&end);
@@ -1045,7 +1051,16 @@ int main()
     printf("Generate group indicator\n");
     // dim3 grid3(SIZE_N/TILE_WIDTH, SIZE_M/TILE_HEIGHT, 1), block3(TILE_HEIGHT, BIT_WIDTH, 1);
     dim3 grid_2d(SIZE_N/TILE_WIDTH, SIZE_M/TILE_HEIGHT, 1), block_1d(TILE_HEIGHT, 1, 1);
-    generate_group_indicator_smem_sparse_1dthread<<<grid_2d, block_1d>>>(dB_bitmask, 
+    pre_spgemm<<<grid_2d, block_1d>>>(dB_bitmask, dC_spilled_row_cnt, dC_spilled_nnz, dA_tiled_csr_offset,
+                                    dA_tiled_csr_column, dA_tiled_csr_value, dA_tile_nnz_acc, dC_output_group_idx);
+
+
+    float *tmp_buffer1, *tmp_buffer2, *tmp_buffer3;
+    CHECK_CUDA( cudaMalloc((void**) &tmp_buffer1,  SIZE_M * SIZE_N / TILE_HEIGHT * sizeof(float)) )
+    CHECK_CUDA( cudaMalloc((void**) &tmp_buffer2,  SIZE_M * SIZE_N / TILE_HEIGHT * sizeof(float)) )
+    CHECK_CUDA( cudaMalloc((void**) &tmp_buffer3,  SIZE_M * SIZE_N / TILE_HEIGHT * sizeof(float)) )
+
+    spgemm_compute_1dthread<<<grid_2d, block_1d>>>(dB_bitmask, 
                                                 dA_dense,
                                                 dB_dense, 
                                                 dB_group_id, 
@@ -1061,6 +1076,7 @@ int main()
                                                 dA_tiled_csr_value,
                                                 dA_tile_nnz_acc,
                                                 dA_tile_nnz,
+                                                dC_output_group_idx,
                                                 dC_final_result_gmem
                                                 );
 
@@ -1080,6 +1096,18 @@ int main()
     cudaEventDestroy(end);
 
     printf("Elapsed time1: %fms\n", ms);
+
+    int *hC_spilled_row_cnt = (int*)malloc(tileC_cnt * sizeof(int));
+    int *hC_spilled_nnz = (int*)malloc(tileC_cnt * sizeof(int));
+    int *hC_output_group_idx = (int*)malloc(SIZE_M * SIZE_N / TILE_WIDTH * sizeof(int));
+    cudaMemcpy(hC_spilled_row_cnt, dC_spilled_row_cnt, tileC_cnt * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(hC_spilled_nnz, dC_spilled_nnz, tileC_cnt * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(hC_output_group_idx, dC_output_group_idx, SIZE_M * SIZE_N / TILE_WIDTH * sizeof(int), cudaMemcpyDeviceToHost);
+
+    for (int i = 0; i < tileC_cnt; i++)
+    {
+        printf("hC_spilled_nnz: %d\n", hC_spilled_nnz[i]);
+    }
 
     // cusparse
     cusparseSpMatDescr_t matA, matB, matC;
@@ -1178,6 +1206,8 @@ int main()
     CHECK_CUSPARSE( cusparseDestroySpMat(matB) )
     CHECK_CUSPARSE( cusparseDestroySpMat(matC) )
     CHECK_CUSPARSE( cusparseDestroy(handle) )
+
+    printf("C_sparsity: %f\n", 1.0 - float(C_nnz1)/SIZE_M/SIZE_N);
 
 
    // print MatA's information

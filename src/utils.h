@@ -1,6 +1,8 @@
 #ifndef _UTILS_
 #define _UTILS_
 
+#include <cstdlib>
+
 void fill_random_uint8(uint8_t*data, int m, int n, int sparsity) {
 	for (int i = 0; i < m*n; i++) {
 		data[i] = rand() % 100;
@@ -9,10 +11,10 @@ void fill_random_uint8(uint8_t*data, int m, int n, int sparsity) {
 	}
 }
 
-void fill_random(float*data, int m, int n, int sparsity) {
+void fill_random(float*data, int m, int n, float sparsity) {
 	for (int i = 0; i < m*n; i++) {
-		data[i] = rand() % 100;
-		if (data[i] < sparsity) //made sparse 
+		data[i] = rand()/double(RAND_MAX);
+		if (data[i] < 0.01 * sparsity) //made sparse 
 			data[i] = 0;
 	}
 }
