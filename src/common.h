@@ -23,7 +23,7 @@
 #define SPARSITY 99.5
 #define BIT_WIDTH 8
 #define MAX_GROUP_NUM 8
-#define OUTPUT_MAX_GROUP_NUM 16
+#define OUTPUT_MAX_GROUP_NUM 8
 #define TILE_HEIGHT 256
 #define TILE_WIDTH 32
 #define SIZE_M 1024
@@ -31,6 +31,7 @@
 #define SIZE_N 1024
 #define SPLIT_K 256
 #define MAX_TILEA_NNZ 2048
+#define MAX_SPILLED_ROW_CNT_C 1024
 
 #define PRINT_MAT_A_INFO false
 #define PRINT_MAT_B_INFO false

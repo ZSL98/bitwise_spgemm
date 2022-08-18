@@ -1018,9 +1018,19 @@ int main()
 
     int tileC_cnt = SIZE_M * SIZE_N / TILE_HEIGHT / TILE_WIDTH;
     int *dC_spilled_row_cnt, *dC_spilled_nnz, *dC_output_group_idx;
+    int *dC_spilled_row_row_idx, *dC_spilled_row_tile_idx;
     CHECK_CUDA( cudaMalloc((void**) &dC_spilled_row_cnt,  tileC_cnt * sizeof(int)) )
     CHECK_CUDA( cudaMalloc((void**) &dC_spilled_nnz,  tileC_cnt * sizeof(int)) )
     CHECK_CUDA( cudaMalloc((void**) &dC_output_group_idx,  SIZE_M * SIZE_N / TILE_WIDTH * sizeof(int)) )
+    CHECK_CUDA( cudaMalloc((void**) &dC_spilled_row_row_idx,  MAX_SPILLED_ROW_CNT_C * sizeof(int)) )
+    CHECK_CUDA( cudaMalloc((void**) &dC_spilled_row_tile_idx,  MAX_SPILLED_ROW_CNT_C * sizeof(int)) )
+
+    int *dC_spilled_row_buffersize, *dC_spilled_nnz_buffersize;
+    int *dC_spilled_nnz_offset, *dC_spilled_row_cnt_offset;
+    CHECK_CUDA( cudaMalloc((void**) &dC_spilled_nnz_offset,     (tileC_cnt + 1) * sizeof(int)) )
+    CHECK_CUDA( cudaMalloc((void**) &dC_spilled_row_cnt_offset,  (tileC_cnt + 1) * sizeof(int)) )
+    CHECK_CUDA( cudaMalloc((void**) &dC_spilled_row_buffersize,  sizeof(int)) )
+    CHECK_CUDA( cudaMalloc((void**) &dC_spilled_nnz_buffersize,  sizeof(int)) )
 
     cudaEvent_t start, end, cusparse_start, cusparse_end;
     cudaEventCreate(&start);
@@ -1051,15 +1061,56 @@ int main()
     printf("Generate group indicator\n");
     // dim3 grid3(SIZE_N/TILE_WIDTH, SIZE_M/TILE_HEIGHT, 1), block3(TILE_HEIGHT, BIT_WIDTH, 1);
     dim3 grid_2d(SIZE_N/TILE_WIDTH, SIZE_M/TILE_HEIGHT, 1), block_1d(TILE_HEIGHT, 1, 1);
-    pre_spgemm<<<grid_2d, block_1d>>>(dB_bitmask, dC_spilled_row_cnt, dC_spilled_nnz, dA_tiled_csr_offset,
-                                    dA_tiled_csr_column, dA_tiled_csr_value, dA_tile_nnz_acc, dC_output_group_idx);
+    pre_spgemm<<<grid_2d, block_1d>>>(dB_bitmask, 
+                                      dC_spilled_row_cnt, 
+                                      dC_spilled_nnz, 
+                                      dA_tiled_csr_offset,
+                                      dA_tiled_csr_column, 
+                                      dA_tiled_csr_value, 
+                                      dA_tile_nnz_acc, 
+                                      dC_output_group_idx,
+                                      dC_spilled_row_row_idx,
+                                      dC_spilled_row_tile_idx,
+                                      dC_spilled_row_cnt_offset,
+                                      dC_spilled_nnz_offset,
+                                      dC_spilled_row_buffersize,
+                                      dC_spilled_nnz_buffersize
+                                      );
+
+    printf("pre_spgemm success!\n");
+    int *hC_spilled_row_buffersize = (int*)malloc(sizeof(int));
+    int *hC_spilled_nnz_buffersize = (int*)malloc(sizeof(int));
+    cudaMemcpy(hC_spilled_row_buffersize, dC_spilled_row_buffersize, sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(hC_spilled_nnz_buffersize, dC_spilled_nnz_buffersize, sizeof(int), cudaMemcpyDeviceToHost);
 
 
-    float *tmp_buffer1, *tmp_buffer2, *tmp_buffer3;
-    CHECK_CUDA( cudaMalloc((void**) &tmp_buffer1,  SIZE_M * SIZE_N / TILE_HEIGHT * sizeof(float)) )
-    CHECK_CUDA( cudaMalloc((void**) &tmp_buffer2,  SIZE_M * SIZE_N / TILE_HEIGHT * sizeof(float)) )
-    CHECK_CUDA( cudaMalloc((void**) &tmp_buffer3,  SIZE_M * SIZE_N / TILE_HEIGHT * sizeof(float)) )
+    int *dC_tile_spilled_csrRowPtr, *dC_tile_spilled_csrColInd;
+    float *dC_tile_spilled_csrVal;
+    CHECK_CUDA( cudaMalloc((void**) &dC_tile_spilled_csrRowPtr,  *hC_spilled_row_buffersize * sizeof(int)) )
+    CHECK_CUDA( cudaMalloc((void**) &dC_tile_spilled_csrColInd,  *hC_spilled_nnz_buffersize * sizeof(int)) )
+    CHECK_CUDA( cudaMalloc((void**) &dC_tile_spilled_csrVal,     *hC_spilled_nnz_buffersize * sizeof(float)) )
 
+    spgemm_compute_spilled<<<1, *hC_spilled_row_buffersize>>>(
+                                      dC_spilled_row_row_idx,
+                                      dC_spilled_row_tile_idx,
+                                      dA_tiled_csr_offset,
+                                      dA_tiled_csr_column,
+                                      dA_tiled_csr_value,
+                                      dA_tile_nnz_acc,
+                                      dB_group_id,
+                                      dB_bitmask,
+                                      dB_group_ele_val,
+                                      dB_spilled_row_hash_table_reverse_gmem,
+                                      dB_tile_spilled_csrRowPtr,
+                                      dB_tile_spilled_csrColInd,
+                                      dB_tile_spilled_csrVal,
+                                      dB_spilled_row_cnt_offset,
+                                      dB_spilled_nnz_offset,
+                                      dC_tile_spilled_csrColInd,
+                                      dC_tile_spilled_csrVal
+                                      );
+
+    printf("spgemm_compute_spilled success!\n");
     spgemm_compute_1dthread<<<grid_2d, block_1d>>>(dB_bitmask, 
                                                 dA_dense,
                                                 dB_dense, 
@@ -1084,7 +1135,7 @@ int main()
     if (err != cudaSuccess) {
         printf("CUDA Error: %s\n", cudaGetErrorString(err));
     }
-
+    printf("spgemm_compute success!\n");
     // spgemm_compute<<<grid2, block2>>>(dA_group_indicator_t_gmem, dB_group_ele_val);
 
     cudaEventRecord(end);
@@ -1104,10 +1155,10 @@ int main()
     cudaMemcpy(hC_spilled_nnz, dC_spilled_nnz, tileC_cnt * sizeof(int), cudaMemcpyDeviceToHost);
     cudaMemcpy(hC_output_group_idx, dC_output_group_idx, SIZE_M * SIZE_N / TILE_WIDTH * sizeof(int), cudaMemcpyDeviceToHost);
 
-    for (int i = 0; i < tileC_cnt; i++)
-    {
-        printf("hC_spilled_nnz: %d\n", hC_spilled_nnz[i]);
-    }
+    // for (int i = 0; i < tileC_cnt; i++)
+    // {
+    //     printf("hC_spilled_nnz: %d\n", hC_spilled_nnz[i]);
+    // }
 
     // cusparse
     cusparseSpMatDescr_t matA, matB, matC;

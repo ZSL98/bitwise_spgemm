@@ -808,7 +808,13 @@ __global__ void pre_spgemm(
                         int *dA_tiled_csr_column_gmem,
                         float *dA_tiled_csr_value_gmem,
                         int *dA_tile_nnz_acc,
-                        int *dC_output_group_idx
+                        int *dC_output_group_idx,
+                        int *dC_spilled_row_row_idx,
+                        int *dC_spilled_row_tile_idx,
+                        int *dC_spilled_row_cnt_offset,
+                        int *dC_spilled_nnz_offset,
+                        int *dC_spilled_row_buffersize,
+                        int *dC_spilled_nnz_buffersize
                         )
 {
     int bid = blockIdx.x + blockIdx.y * gridDim.x;
@@ -866,6 +872,8 @@ __global__ void pre_spgemm(
     int32_or_64 or_result = output_row_group[output_group_idx] | bit_indicator;
     int32_or_64 old_value = atomicCAS(&output_row_group[output_group_idx], expected, or_result);
 
+    int spilled_idx;
+
     // For rows that haven't been added onto the row_group
     while (expected != old_value) {
         // calculate and_result again to see if there exists overlap
@@ -882,9 +890,11 @@ __global__ void pre_spgemm(
                 {
                     if (((bit_indicator >> j) & 0x01) == 1)
                     {
-                        atomicAdd(&dC_spilled_nnz[bid], 1);
+                        spilled_idx = atomicAdd(&dC_spilled_nnz[bid], 1);
                     }
                 }
+                dC_spilled_row_row_idx[spilled_idx] = threadIdx.x;
+                dC_spilled_row_tile_idx[spilled_idx] = bid;
                 break;
             }
             and_result = output_row_group[output_group_idx] & bit_indicator;
@@ -899,26 +909,105 @@ __global__ void pre_spgemm(
         old_value = atomicCAS(&output_row_group[output_group_idx], expected, or_result);
     }
     dC_output_group_idx[tid] = output_group_idx;
+
+    __syncthreads();
+    if (tid == 0)
+    {
+        int tmp_row_cnt_size = 0;
+        int tmp_nnz_size = 0;
+        for (int i = 0; i < (SIZE_M/TILE_HEIGHT)*(SIZE_N/TILE_WIDTH); i++)
+        {
+            dC_spilled_row_cnt_offset[i] = tmp_row_cnt_size;
+            dC_spilled_nnz_offset[i] = tmp_nnz_size;
+            tmp_row_cnt_size += dC_spilled_row_cnt[i];
+            tmp_nnz_size += dC_spilled_nnz[i];
+        }
+        *dC_spilled_row_buffersize = tmp_row_cnt_size;
+        *dC_spilled_nnz_buffersize = tmp_nnz_size;
+    }
 }
 
-// template <typename int32_or_64>
-// __global__ void spgemm_compute_spilled()
-// {
-//     int rowA_ind = spilled_row_idx[threadIdx.x];
-//     int tileA_id = SIZE_K/SPLIT_K * blockIdx.y + k;
-//     for (int k = 0; k < SIZE_K/SPLIT_K; k++)
-//     {
-//         int csr_offset_start = dA_tiled_csr_offset_gmem[tileA_id*(TILE_HEIGHT+1)+rowA_ind%TILE_HEIGHT];
-//         int csr_offset_end = dA_tiled_csr_offset_gmem[tileA_id*(TILE_HEIGHT+1)+rowA_ind%TILE_HEIGHT+1];
+template <typename int32_or_64>
+__global__ void spgemm_compute_spilled(int *dC_spilled_row_row_idx,
+                                       int *dC_spilled_row_tile_idx,
+                                       int *dA_tiled_csr_offset_gmem,
+                                       int *dA_tiled_csr_column_gmem,
+                                       float *dA_tiled_csr_value_gmem,
+                                       int *dA_tile_nnz_acc,
+                                       int *dB_group_id_gmem,
+                                       int32_or_64 *MatB_bit,
+                                       float *dB_group_ele_row_val,
+                                       int *dB_spilled_row_hash_table_reverse,
+                                       int *dB_tile_spilled_csrRowPtr,
+                                       int *dB_tile_spilled_csrColInd,
+                                       float *dB_tile_spilled_csrVal,
+                                       int *dB_spilled_row_cnt_offset,
+                                       int *dB_spilled_nnz_offset,
+                                       int *dC_spilled_csr_column,
+                                       float *dC_spilled_csr_value
+                                        )
+{
+    float result[TILE_WIDTH];
+    // int bid = blockIdx.x + blockIdx.y * gridDim.x;
+    // int tid = bid * blockDim.x + threadIdx.x;
+    int tid = threadIdx.x;
+    int rowC_ind = dC_spilled_row_row_idx[tid];
+    int tileC_id = dC_spilled_row_tile_idx[tid];
+    for (int k = 0; k < SIZE_K/SPLIT_K; k++)
+    {
+        int tileA_id = SIZE_K/SPLIT_K * tileC_id/(SIZE_N/TILE_WIDTH) + k;
+        int tileB_id = k * (SIZE_N/TILE_WIDTH) + tileC_id%(SIZE_N/TILE_WIDTH);
+        int tile_nnz_acc = dA_tile_nnz_acc[tileA_id];
 
-//         for (int i = csr_offset_start; i < csr_offset_end; i++)
-//         {
-//             int column_A = dA_tiled_csr_column_gmem[tile_nnz_acc + i];
-//             float value_A = dA_tiled_csr_value_gmem[tile_nnz_acc + i];
-//         }
-//     }
+        int csr_offset_start = dA_tiled_csr_offset_gmem[tileA_id*(TILE_HEIGHT+1)+rowC_ind];
+        int csr_offset_end = dA_tiled_csr_offset_gmem[tileA_id*(TILE_HEIGHT+1)+rowC_ind+1];
+
+        for (int i = csr_offset_start; i < csr_offset_end; i++)
+        {
+            int entry_col = dA_tiled_csr_column_gmem[tile_nnz_acc + i];
+            float value_A = dA_tiled_csr_value_gmem[tile_nnz_acc + i];
+            int entry = (k * SPLIT_K + entry_col) * (SIZE_N/TILE_WIDTH)+tileC_id%(SIZE_N/TILE_WIDTH);
+            int row_group_id = dB_group_id_gmem[entry];
+            if (row_group_id != -1)
+            {
+                for (int i = 0; i < TILE_WIDTH; i++)
+                {
+                    if (MatB_bit[entry] >> i & 0x01)
+                    {
+                        result[i] += value_A * dB_group_ele_row_val[(MAX_GROUP_NUM * tileB_id + row_group_id) * TILE_WIDTH + i];
+                    }
+                }
+            }
+            else
+            {
+                int row_in_csr = dB_spilled_row_hash_table_reverse[entry_col + tileB_id * SPLIT_K];
+                int start_offset;
+                if (row_in_csr == 0)
+                {
+                    start_offset = 0;
+                }
+                else 
+                {
+                    start_offset = dB_tile_spilled_csrRowPtr[dB_spilled_row_cnt_offset[tileB_id] + row_in_csr - 1];
+                }
+                for (int j = start_offset; j < dB_tile_spilled_csrRowPtr[dB_spilled_row_cnt_offset[tileB_id] + row_in_csr]; j++)
+                {
+                    int col_ind = dB_tile_spilled_csrColInd[dB_spilled_nnz_offset[tileB_id] + j];
+                    result[col_ind] += value_A * dB_tile_spilled_csrVal[dB_spilled_nnz_offset[tileB_id] + j];
+                }
+            }
+        }
+    }
+    for (int i = 0; i < TILE_WIDTH; i++)
+    {
+        if (result[i] != 0.0f)
+        {
+            dC_spilled_csr_value[tid] = result[i];
+            dC_spilled_csr_column[tid] = i;
+        }
+    }
     
-// }
+}
 
 template <typename int32_or_64>
 __global__ void spgemm_compute_1dthread(
@@ -1023,6 +1112,9 @@ __global__ void spgemm_compute_1dthread(
         // Load MatB's group information into shared memory
         group_id_smem[threadIdx.x] = group_id_gmem[entry];
 
+        // Load MatB's bit mask data into shared memory
+        MatB_bit_smem[threadIdx.x] = MatB_bit[entry];
+
         spilled_row_hash_table_reverse_smem[threadIdx.x] 
             = spilled_row_hash_table_reverse_gmem[threadIdx.x + tileB_id * SPLIT_K];
 
@@ -1047,7 +1139,7 @@ __global__ void spgemm_compute_1dthread(
             }
             else if (row_group_id == -1 && output_group_idx != -1)
             {
-                int row_in_csr = spilled_row_hash_table_reverse_smem[z];
+                int row_in_csr = spilled_row_hash_table_reverse_smem[entry_col];
                 int start_offset;
                 if (row_in_csr == 0)
                 {
@@ -1060,7 +1152,7 @@ __global__ void spgemm_compute_1dthread(
                 for (int j = start_offset; j < dB_tile_spilled_csrRowPtr[dB_spilled_row_cnt_offset[tileB_id] + row_in_csr]; j++)
                 {
                     int col_ind = dB_tile_spilled_csrColInd[dB_spilled_nnz_offset[tileB_id] + j];
-                    result[output_group_idx][1][col_ind] += tiled_csr_value_smem[col_ind] * dB_tile_spilled_csrVal[dB_spilled_nnz_offset[tileB_id] + j];
+                    result[output_group_idx][1][col_ind] += tiled_csr_value_smem[z] * dB_tile_spilled_csrVal[dB_spilled_nnz_offset[tileB_id] + j];
                 }
             }
             
