@@ -20,15 +20,17 @@
 #define MAT_PTR_TYPE float
 #endif
 
-#define SPARSITY 99.5
+#define SPARSITY 99
+#define SPARSITY_A 99
+#define SPARSITY_B 99.8
 #define BIT_WIDTH 8
-#define MAX_GROUP_NUM 8
-#define OUTPUT_MAX_GROUP_NUM 8
+#define MAX_GROUP_NUM 4
+#define OUTPUT_MAX_GROUP_NUM 16
 #define TILE_HEIGHT 256
 #define TILE_WIDTH 32
-#define SIZE_M 1024
-#define SIZE_K 1024
-#define SIZE_N 1024
+#define SIZE_M 2048
+#define SIZE_K 2048
+#define SIZE_N 2048
 #define SPLIT_K 256
 #define MAX_TILEA_NNZ 2048
 #define MAX_SPILLED_ROW_CNT_C 1024

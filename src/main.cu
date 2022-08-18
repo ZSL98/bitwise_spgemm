@@ -730,8 +730,8 @@ int main()
 	float* hA_dense = (float*)malloc(sizeof(float)*m*k);
     float* hB_dense = (float*)malloc(sizeof(float)*k*n);
     float* hC_dense = (float*)malloc(sizeof(float)*m*n);
-    fill_random(hA_dense, m, k, SPARSITY);
-    fill_random(hB_dense, k, n, SPARSITY);
+    fill_random(hA_dense, m, k, SPARSITY_A);
+    fill_random(hB_dense, k, n, SPARSITY_B);
     fill_random(hC_dense, m, n, SPARSITY);
 
     // basic ptrs
@@ -1090,25 +1090,28 @@ int main()
     CHECK_CUDA( cudaMalloc((void**) &dC_tile_spilled_csrColInd,  *hC_spilled_nnz_buffersize * sizeof(int)) )
     CHECK_CUDA( cudaMalloc((void**) &dC_tile_spilled_csrVal,     *hC_spilled_nnz_buffersize * sizeof(float)) )
 
-    spgemm_compute_spilled<<<1, *hC_spilled_row_buffersize>>>(
-                                      dC_spilled_row_row_idx,
-                                      dC_spilled_row_tile_idx,
-                                      dA_tiled_csr_offset,
-                                      dA_tiled_csr_column,
-                                      dA_tiled_csr_value,
-                                      dA_tile_nnz_acc,
-                                      dB_group_id,
-                                      dB_bitmask,
-                                      dB_group_ele_val,
-                                      dB_spilled_row_hash_table_reverse_gmem,
-                                      dB_tile_spilled_csrRowPtr,
-                                      dB_tile_spilled_csrColInd,
-                                      dB_tile_spilled_csrVal,
-                                      dB_spilled_row_cnt_offset,
-                                      dB_spilled_nnz_offset,
-                                      dC_tile_spilled_csrColInd,
-                                      dC_tile_spilled_csrVal
-                                      );
+    // if (*hC_spilled_row_buffersize != 0)
+    // {
+    //     spgemm_compute_spilled<<<1, *hC_spilled_row_buffersize>>>(
+    //                                     dC_spilled_row_row_idx,
+    //                                     dC_spilled_row_tile_idx,
+    //                                     dA_tiled_csr_offset,
+    //                                     dA_tiled_csr_column,
+    //                                     dA_tiled_csr_value,
+    //                                     dA_tile_nnz_acc,
+    //                                     dB_group_id,
+    //                                     dB_bitmask,
+    //                                     dB_group_ele_val,
+    //                                     dB_spilled_row_hash_table_reverse_gmem,
+    //                                     dB_tile_spilled_csrRowPtr,
+    //                                     dB_tile_spilled_csrColInd,
+    //                                     dB_tile_spilled_csrVal,
+    //                                     dB_spilled_row_cnt_offset,
+    //                                     dB_spilled_nnz_offset,
+    //                                     dC_tile_spilled_csrColInd,
+    //                                     dC_tile_spilled_csrVal
+    //                                     );
+    // }
 
     printf("spgemm_compute_spilled success!\n");
     spgemm_compute_1dthread<<<grid_2d, block_1d>>>(dB_bitmask, 
@@ -1155,9 +1158,10 @@ int main()
     cudaMemcpy(hC_spilled_nnz, dC_spilled_nnz, tileC_cnt * sizeof(int), cudaMemcpyDeviceToHost);
     cudaMemcpy(hC_output_group_idx, dC_output_group_idx, SIZE_M * SIZE_N / TILE_WIDTH * sizeof(int), cudaMemcpyDeviceToHost);
 
+    printf("hC_spilled_row_cnt: %d\n", *hC_spilled_row_buffersize);
     // for (int i = 0; i < tileC_cnt; i++)
     // {
-    //     printf("hC_spilled_nnz: %d\n", hC_spilled_nnz[i]);
+    //     printf("hC_spilled_row_cnt: %d\n", hC_spilled_row_cnt[i]);
     // }
 
     // cusparse

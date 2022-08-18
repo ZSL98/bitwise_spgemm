@@ -1056,6 +1056,10 @@ __global__ void spgemm_compute_1dthread(
     int row_group_id;
     int bid = blockIdx.x + blockIdx.y * gridDim.x;
     int output_group_idx = dC_output_group_idx[bid * blockDim.x + threadIdx.x];
+    // if (output_group_idx == -1)
+    // {
+    //     return;
+    // }
     // int tid = (threadIdx.y * blockDim.x) + threadIdx.x;
     // int group[MAX_GROUP_NUM];
 
@@ -1103,7 +1107,8 @@ __global__ void spgemm_compute_1dthread(
         }
 
         // Load MatB's group data into shared memory
-        group[threadIdx.x/8][threadIdx.x%8] = dB_group_ele_row_val[(MAX_GROUP_NUM * tileB_id + threadIdx.x%8) * TILE_WIDTH + threadIdx.x/8];
+        group[threadIdx.x/MAX_GROUP_NUM][threadIdx.x%MAX_GROUP_NUM] 
+            = dB_group_ele_row_val[(MAX_GROUP_NUM * tileB_id + threadIdx.x%MAX_GROUP_NUM) * TILE_WIDTH + threadIdx.x/MAX_GROUP_NUM];
 
         // SPLIT_K/blockDim.x = 256/32 = 8 = blockDim.y
         rowB_ind = k * SPLIT_K + threadIdx.x;
@@ -1126,6 +1131,9 @@ __global__ void spgemm_compute_1dthread(
         {
             entry_col = tiled_csr_column_smem[z];
             row_group_id = group_id_smem[entry_col];
+            int32_or_64 MatB_bit_row = MatB_bit_smem[entry_col];
+            if (MatB_bit_row == 0) continue;
+            // printf("row_group_id: %d\n", row_group_id);
             if (row_group_id != -1 && output_group_idx != -1)
             {
                 for (int b = 0; b < BIT_WIDTH; b++)
@@ -1133,7 +1141,14 @@ __global__ void spgemm_compute_1dthread(
                     tmp = (__float_as_int(tiled_csr_value_smem[z]) >> b) & 1 == 0x01;
                     if ((b % 2 + entry_col % 2) % 2 == 0)
                     {
-                        group_indicator[b][row_group_id] |= MatB_bit_smem[entry_col];
+                        // for (int z = 0; z < TILE_WIDTH; z++)
+                        // {
+                        //     if ((MatB_bit_smem[entry_col] >> z) & 0x01)
+                        //     {
+                        //         result[output_group_idx][b][z] += group[z][row_group_id];
+                        //     }
+                        // }
+                        group_indicator[b][row_group_id] |= MatB_bit_row;
                     }
                 }
             }
@@ -1161,42 +1176,42 @@ __global__ void spgemm_compute_1dthread(
         __syncthreads();
 
 
-        #pragma unroll
-        for (int b = 0; b < BIT_WIDTH; b++)
-        {
-            #pragma unroll
-            for (int i = 0; i < MAX_GROUP_NUM; i++)
-            {
-                if (group_indicator[b][i] == 0)
-                {
-                    continue;
-                }
-                #pragma unroll
-                for (int z = 0; z < TILE_WIDTH; z++)
-                {
-                    if (((group_indicator[b][i] >> z) & 0x01) == 1)
-                    {
-                        result[output_group_idx][b][z] += group[z][i];
-                        // result[threadIdx.x][threadIdx.y][z] += group[z][i];
-                        // result[threadIdx.x][threadIdx.y][z] += i;
-                    }
-                }
-            }
-        }
+        // #pragma unroll
+        // for (int b = 0; b < BIT_WIDTH; b++)
+        // {
+        //     #pragma unroll
+        //     for (int i = 0; i < MAX_GROUP_NUM; i++)
+        //     {
+        //         if (group_indicator[b][i] == 0)
+        //         {
+        //             continue;
+        //         }
+        //         #pragma unroll
+        //         for (int z = 0; z < TILE_WIDTH; z++)
+        //         {
+        //             if (((group_indicator[b][i] >> z) & 0x01) == 1)
+        //             {
+        //                 result[output_group_idx][b][z] += group[z][i];
+        //                 // result[threadIdx.x][threadIdx.y][z] += group[z][i];
+        //                 // result[threadIdx.x][threadIdx.y][z] += i;
+        //             }
+        //         }
+        //     }
+        // }
     }
 
-    // compute with cuda core
-    #pragma unroll
-    for (int b = 0; b < BIT_WIDTH; b++)
-    {
-        #pragma unroll
-        for (int z = 0; z < TILE_WIDTH; z++)
-        {
-            ind = (blockIdx.y * blockDim.x + threadIdx.x) * SIZE_N + blockIdx.x * TILE_WIDTH + z;
-            final_result_gmem[ind] += result[output_group_idx][b][z] * float(b);
-            // final_result_gmem[ind] += result[threadIdx.x][threadIdx.y][i] * float(threadIdx.y);
-        }
-    }
+    // // compute with cuda core
+    // #pragma unroll
+    // for (int b = 0; b < BIT_WIDTH; b++)
+    // {
+    //     #pragma unroll
+    //     for (int z = 0; z < TILE_WIDTH; z++)
+    //     {
+    //         ind = (blockIdx.y * blockDim.x + threadIdx.x) * SIZE_N + blockIdx.x * TILE_WIDTH + z;
+    //         final_result_gmem[ind] += result[output_group_idx][b][z] * float(b);
+    //         // final_result_gmem[ind] += result[threadIdx.x][threadIdx.y][i] * float(threadIdx.y);
+    //     }
+    // }
 
 }
 
