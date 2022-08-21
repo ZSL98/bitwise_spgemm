@@ -41,7 +41,8 @@ void printintMatrix(int m, int n, const int*A, const char* name)
     }
 }
 
-void printfloatMatrix(int m, int n, const float*A, const char* name)
+template <typename type>
+void printMatrix(int m, int n, const type*A, const char* name)
 {
     for(int row = 0 ; row < m ; row++){
         for(int col = 0 ; col < n ; col++){

@@ -1,5 +1,9 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include "common.h"
+#include "utils.h"
+
+using namespace nvcuda;
 
 #define NUM_BLOCKS 4
 
@@ -70,8 +74,57 @@ __global__ void my_kernel2(int *d_mem1, int *d_mem2)
     __syncthreads();
 }
 
+__global__ void wmma_test(half *A, half *B, float *C)
+{
+    for (int i = 0; i < 8; i++)
+    {
+        for (int j = 0; j < 16; j++)
+        {
+            A[i*16+j] = j%8;
+        }
+    }
+
+    for (int n = 0; n < 8; n++)
+    {
+        for (int i = 0; i < 16; i++)
+        {
+            for (int j = 0; j < 32; j++)
+            {
+                B[n*16*32 + i*32 + j] = j%8 + n;
+            }
+        }
+    }
+    // Declare the fragments
+    nvcuda::wmma::fragment<wmma::matrix_a, 8, 32, 16, half, wmma::row_major> A_frag;
+    nvcuda::wmma::fragment<wmma::matrix_b, 8, 32, 16, half, wmma::row_major> B_frag[8];
+    nvcuda::wmma::fragment<wmma::accumulator, 8, 32, 16, float> C_frag[8];
+
+    // Initialize the output to zero
+    for (int i = 0; i < 8; i++)
+    {
+        nvcuda::wmma::fill_fragment(C_frag[i], 0.0f);
+    }
+
+    // Load the inputs
+    nvcuda::wmma::load_matrix_sync(A_frag, A, 16);
+    for (int i = 0; i < 8; i++)
+    {
+        nvcuda::wmma::load_matrix_sync(B_frag[i], B, 32);
+    }
+
+    for (int i = 0; i < 8; i++)
+    {
+        // Perform the matrix multiplication
+        nvcuda::wmma::mma_sync(C_frag[i], A_frag, B_frag[i], C_frag[i]);
+
+        // Store the output
+        nvcuda::wmma::store_matrix_sync(&C[i*8*32], C_frag[i], 32, wmma::mem_row_major);
+    }
+}
+
 int main()
 {
+    /*
     // cudaDeviceSetLimit(cudaLimitMallocHeapSize, 128*1024*1024);
 
     // Allocate memory
@@ -117,7 +170,34 @@ int main()
     // Free memory
     freemem<<< NUM_BLOCKS, 10 >>>();
 
-    cudaDeviceSynchronize();
+    cudaDeviceSynchronize();*/
+
+    half *d_A, *d_B;
+    float *d_C;
+
+    CHECK_CUDA( cudaMalloc((void**) &d_A, 8 * 16 * sizeof(half))   )
+    CHECK_CUDA( cudaMalloc((void**) &d_B, 8 * 16 * 32 * sizeof(half))   )
+    CHECK_CUDA( cudaMalloc((void**) &d_C, 8 * 8 * 32 * sizeof(float))   )
+
+    wmma_test<<<1, 256>>>(d_A, d_B, d_C);
+
+    half *h_A = (half*)malloc(8 * 16 * sizeof(half));
+    half *h_B = (half*)malloc(8 * 16 * 32 * sizeof(half));
+    float *h_C = (float*)malloc(8 * 8 * 32 * sizeof(float));
+
+    cudaMemcpy(h_A, d_A, 8 * 16 * sizeof(half), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_B, d_B, 8 * 16 * 32 * sizeof(half), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_C, d_C, 8 * 8 * 32 * sizeof(float), cudaMemcpyDeviceToHost);
+
+    printMatrix(8, 16, h_A, "h_A");
+
+    printf("-----------------\n");
+
+    printMatrix(16, 32, h_B+1*16*32, "h_B");
+
+    printf("-----------------\n");
+
+    printMatrix(16, 32, h_C, "h_C");
 
     return 0;
 }

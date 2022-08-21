@@ -10,7 +10,7 @@
 #include <cusparse.h>
 #include <mma.h>
 
-// using namespace nvcuda;
+using namespace nvcuda;
 
 #ifndef MAT_VAL_TYPE
 #define MAT_VAL_TYPE double
@@ -32,8 +32,10 @@
 #define SIZE_K 2048
 #define SIZE_N 2048
 #define SPLIT_K 256
+
 #define MAX_TILEA_NNZ 2048
 #define MAX_SPILLED_ROW_CNT_C 1024
+#define MAX_LINE_NNZ_A 4
 
 #define PRINT_MAT_A_INFO false
 #define PRINT_MAT_B_INFO false

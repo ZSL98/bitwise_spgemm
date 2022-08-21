@@ -1035,16 +1035,17 @@ __global__ void spgemm_compute_1dthread(
     __shared__ int group_id_smem[SPLIT_K];
     __shared__ int spilled_row_hash_table_reverse_smem[SPLIT_K];
     __shared__ int32_or_64 MatB_bit_smem[SPLIT_K];
-    __shared__ int tiled_csr_offset_smem[TILE_HEIGHT+1];
-    __shared__ int tiled_csr_column_smem[MAX_TILEA_NNZ];
-    __shared__ float tiled_csr_value_smem[MAX_TILEA_NNZ];
+    // __shared__ int tiled_csr_offset_smem[TILE_HEIGHT+1];
+    // __shared__ int tiled_csr_column_smem[MAX_TILEA_NNZ];
+    // __shared__ float tiled_csr_value_smem[MAX_TILEA_NNZ];
     __shared__ float group[TILE_WIDTH][MAX_GROUP_NUM];
 
     // intermediate buffers
     // __shared__ int32_or_64 group_indicator[TILE_HEIGHT][BIT_WIDTH][MAX_GROUP_NUM];
     // __shared__ float result[TILE_HEIGHT][BIT_WIDTH][TILE_WIDTH];
     // float result[TILE_WIDTH];
-    int32_or_64 group_indicator[BIT_WIDTH][MAX_GROUP_NUM];
+    // int32_or_64 group_indicator[BIT_WIDTH][MAX_GROUP_NUM];
+    __shared__ int32_or_64 group_indicator[OUTPUT_MAX_GROUP_NUM][BIT_WIDTH][MAX_GROUP_NUM];
     __shared__ float result[OUTPUT_MAX_GROUP_NUM][BIT_WIDTH][TILE_WIDTH];
 
     // for (int i = 0; i < MAX_TILEA_NNZ; i++)
@@ -1063,29 +1064,33 @@ __global__ void spgemm_compute_1dthread(
     // int tid = (threadIdx.y * blockDim.x) + threadIdx.x;
     // int group[MAX_GROUP_NUM];
 
-    // // Declare the fragments
-    // nvcuda::wmma::fragment<wmma::matrix_a, 16, 16, 16, half, wmma::col_major> a_frag;
-    // nvcuda::wmma::fragment<wmma::matrix_b, 16, 16, 16, half, wmma::row_major> b_frag;
-    // nvcuda::wmma::fragment<wmma::accumulator, 16, 16, 16, float> c_frag;
+    // Declare the fragments
+    nvcuda::wmma::fragment<wmma::matrix_a, 8, 32, 16, half, wmma::col_major> A_frag;
+    nvcuda::wmma::fragment<wmma::matrix_b, 8, 32, 16, half, wmma::row_major> B_frag[8];
+    nvcuda::wmma::fragment<wmma::accumulator, 8, 32, 16, float> C_frag[8];
 
-    // // Initialize the output to zero
-    // nvcuda::wmma::fill_fragment(c_frag, 0.0f);
+    // Initialize the output to zero
+    for (int i = 0; i < 8; i++)
+    {
+        nvcuda::wmma::fill_fragment(C_frag[i], 0.0f);
+    }
 
     // // Load the inputs
     // nvcuda::wmma::load_matrix_sync(a_frag, (half *)&group[0][0], 16);
     // nvcuda::wmma::load_matrix_sync(b_frag, (half *)&group[0][0], 16);
-
-    // // Perform the matrix multiplication
-    // nvcuda::wmma::mma_sync(c_frag, a_frag, b_frag, c_frag);
-
-    // // Store the output
-    // nvcuda::wmma::store_matrix_sync(c, c_frag, 16, wmma::mem_row_major);
 
     int tmp;
     int rowB_ind;
     int entry;
     int col_ind, ind, entry_col;
     int tileA_id, tileB_id, tile_nnz_acc;
+
+    int csr_column[MAX_LINE_NNZ_A];
+    float csr_value[MAX_LINE_NNZ_A];
+    int line_csr_offset_start, line_csr_offset_end;
+
+    int B_frag_idx = threadIdx.x/32; // 256/32=8 output groups per wave
+    int output_row_idx = 2 * threadIdx.x/32;
 
     for (int k = 0; k < SIZE_K/SPLIT_K; k++)
     {
@@ -1094,17 +1099,27 @@ __global__ void spgemm_compute_1dthread(
         tile_nnz_acc = dA_tile_nnz_acc[tileA_id];
         // int tile_nnz = dA_tile_nnz[tileA_id];
 
-        // Load MatA's tiled-csr data into shared memory
-        tiled_csr_offset_smem[threadIdx.x] = dA_tiled_csr_offset_gmem[tileA_id*(TILE_HEIGHT+1)+threadIdx.x];
-        if (threadIdx.x == 0)
+        line_csr_offset_start = dA_tiled_csr_offset_gmem[tileA_id*(TILE_HEIGHT+1)+threadIdx.x];
+        line_csr_offset_end = dA_tiled_csr_offset_gmem[tileA_id*(TILE_HEIGHT+1)+threadIdx.x+1];
+
+        // // Load MatA's tiled-csr data into shared memory
+        // tiled_csr_offset_smem[threadIdx.x] = dA_tiled_csr_offset_gmem[tileA_id*(TILE_HEIGHT+1)+threadIdx.x];
+        // if (threadIdx.x == 0)
+        // {
+        //     tiled_csr_offset_smem[TILE_HEIGHT] = dA_tiled_csr_offset_gmem[tileA_id*(TILE_HEIGHT+1)+TILE_HEIGHT];
+        // }
+
+        for (int z = 0; z < line_csr_offset_end - line_csr_offset_start; z++)
         {
-            tiled_csr_offset_smem[TILE_HEIGHT] = dA_tiled_csr_offset_gmem[tileA_id*(TILE_HEIGHT+1)+TILE_HEIGHT];
+            csr_column[z] = dA_tiled_csr_column_gmem[tile_nnz_acc + line_csr_offset_start + z];
+            csr_value[z] = dA_tiled_csr_value_gmem[tile_nnz_acc + line_csr_offset_start + z];
         }
-        for (int i = 0; i < MAX_TILEA_NNZ/blockDim.x; i++)
-        {
-            tiled_csr_column_smem[threadIdx.x + i*blockDim.x] = dA_tiled_csr_column_gmem[tile_nnz_acc + threadIdx.x + i*blockDim.x];
-            tiled_csr_value_smem[threadIdx.x + i*blockDim.x] = dA_tiled_csr_value_gmem[tile_nnz_acc + threadIdx.x + i*blockDim.x];
-        }
+
+        // for (int i = 0; i < MAX_TILEA_NNZ/blockDim.x; i++)
+        // {
+        //     tiled_csr_column_smem[threadIdx.x + i*blockDim.x] = dA_tiled_csr_column_gmem[tile_nnz_acc + threadIdx.x + i*blockDim.x];
+        //     tiled_csr_value_smem[threadIdx.x + i*blockDim.x] = dA_tiled_csr_value_gmem[tile_nnz_acc + threadIdx.x + i*blockDim.x];
+        // }
 
         // Load MatB's group data into shared memory
         group[threadIdx.x/MAX_GROUP_NUM][threadIdx.x%MAX_GROUP_NUM] 
@@ -1127,9 +1142,11 @@ __global__ void spgemm_compute_1dthread(
 
 
         // int rowA_ind = blockIdx.y * blockDim.x + threadIdx.x;
-        for (int z = tiled_csr_offset_smem[threadIdx.x]; z < tiled_csr_offset_smem[threadIdx.x+1]; z++)
+        #pragma unroll
+        for (int z = 0; z < MAX_LINE_NNZ_A; z++)
         {
-            entry_col = tiled_csr_column_smem[z];
+            if (z == line_csr_offset_end - line_csr_offset_start) break;
+            entry_col = csr_column[z];
             row_group_id = group_id_smem[entry_col];
             int32_or_64 MatB_bit_row = MatB_bit_smem[entry_col];
             if (MatB_bit_row == 0) continue;
@@ -1138,7 +1155,7 @@ __global__ void spgemm_compute_1dthread(
             {
                 for (int b = 0; b < BIT_WIDTH; b++)
                 {
-                    tmp = (__float_as_int(tiled_csr_value_smem[z]) >> b) & 1 == 0x01;
+                    tmp = (__float_as_int(csr_value[z]) >> b) & 1 == 0x01;
                     if ((b % 2 + entry_col % 2) % 2 == 0)
                     {
                         // for (int z = 0; z < TILE_WIDTH; z++)
@@ -1148,7 +1165,7 @@ __global__ void spgemm_compute_1dthread(
                         //         result[output_group_idx][b][z] += group[z][row_group_id];
                         //     }
                         // }
-                        group_indicator[b][row_group_id] |= MatB_bit_row;
+                        group_indicator[output_group_idx][b][row_group_id] |= MatB_bit_row;
                     }
                 }
             }
@@ -1167,13 +1184,54 @@ __global__ void spgemm_compute_1dthread(
                 for (int j = start_offset; j < dB_tile_spilled_csrRowPtr[dB_spilled_row_cnt_offset[tileB_id] + row_in_csr]; j++)
                 {
                     int col_ind = dB_tile_spilled_csrColInd[dB_spilled_nnz_offset[tileB_id] + j];
-                    result[output_group_idx][1][col_ind] += tiled_csr_value_smem[z] * dB_tile_spilled_csrVal[dB_spilled_nnz_offset[tileB_id] + j];
+                    result[output_group_idx][1][col_ind] += csr_value[z] * dB_tile_spilled_csrVal[dB_spilled_nnz_offset[tileB_id] + j];
                 }
             }
             
         }
 
         __syncthreads();
+
+        #pragma unroll
+        for (int b = 0; b < BIT_WIDTH; b++)
+        {
+            #pragma unroll
+            for (int i = 0; i < MAX_GROUP_NUM; i++)
+            {
+                if (group_indicator[output_row_idx][0][0] >> (32 - (threadIdx.x % 4)) & 0x01)
+                {
+                    B_frag[B_frag_idx].x[0] += group[0][i];
+                }
+                if (group_indicator[output_row_idx][1][0] >> (32 - (threadIdx.x % 4)) & 0x01)
+                {
+                    B_frag[B_frag_idx].x[1] += group[0][i];
+                }
+                if (group_indicator[output_row_idx+1][0][0] >> (32 - (threadIdx.x % 4)) & 0x01)
+                {
+                    B_frag[B_frag_idx].x[2] += group[0][i];
+                }
+                if (group_indicator[output_row_idx+1][1][0] >> (32 - (threadIdx.x % 4)) & 0x01)
+                {
+                    B_frag[B_frag_idx].x[3] += group[0][i];
+                }
+                if (group_indicator[output_row_idx][0][0] >> (16 - (threadIdx.x % 4)) & 0x01)
+                {
+                    B_frag[B_frag_idx].x[4] += group[16][i];
+                }
+                if (group_indicator[output_row_idx][1][0] >> (16 - (threadIdx.x % 4)) & 0x01)
+                {
+                    B_frag[B_frag_idx].x[5] += group[16][i];
+                }
+                if (group_indicator[output_row_idx+1][0][0] >> (16 - (threadIdx.x % 4)) & 0x01)
+                {
+                    B_frag[B_frag_idx].x[6] += group[16][i];
+                }
+                if (group_indicator[output_row_idx+1][1][0] >> (16 - (threadIdx.x % 4)) & 0x01)
+                {
+                    B_frag[B_frag_idx].x[7] += group[16][i];
+                }
+            }
+        }
 
 
         // #pragma unroll
@@ -1191,13 +1249,23 @@ __global__ void spgemm_compute_1dthread(
         //         {
         //             if (((group_indicator[b][i] >> z) & 0x01) == 1)
         //             {
-        //                 result[output_group_idx][b][z] += group[z][i];
+        //                 // result[output_group_idx][b][z] += group[z][i];
+        //                 C_frag[output_group_idx][b].x[z] += group[z][i];
         //                 // result[threadIdx.x][threadIdx.y][z] += group[z][i];
         //                 // result[threadIdx.x][threadIdx.y][z] += i;
         //             }
         //         }
         //     }
         // }
+    }
+
+    for (int i = 0; i < 8; i++)
+    {
+        // Perform the matrix multiplication
+        nvcuda::wmma::mma_sync(C_frag[i], A_frag, B_frag[i], C_frag[i]);
+
+        // Store the output
+        nvcuda::wmma::store_matrix_sync(final_result_gmem, C_frag[i], 16, wmma::mem_row_major);
     }
 
     // // compute with cuda core
