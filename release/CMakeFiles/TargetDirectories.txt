@@ -1,0 +1,5 @@
+/home/slzhang/projects/spgemm/test/release/CMakeFiles/edit_cache.dir
+/home/slzhang/projects/spgemm/test/release/CMakeFiles/rebuild_cache.dir
+/home/slzhang/projects/spgemm/test/release/src/CMakeFiles/spmm.dir
+/home/slzhang/projects/spgemm/test/release/src/CMakeFiles/edit_cache.dir
+/home/slzhang/projects/spgemm/test/release/src/CMakeFiles/rebuild_cache.dir

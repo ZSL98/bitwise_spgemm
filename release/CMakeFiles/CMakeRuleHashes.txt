@@ -1,0 +1,4 @@
+# Hashes of file build rules.
+1c61c0e696ecfe8358ea057c7d331715 src/CMakeFiles/spmm.dir/spmm_generated_main.cu.o
+9d6db1063edabfd3a830f97183512a55 src/CMakeFiles/spmm.dir/spmm_generated_mm.cu.o
+5f3a1e3eb6bc74aaf88b9d524d216835 src/CMakeFiles/spmm.dir/spmm_intermediate_link.o
