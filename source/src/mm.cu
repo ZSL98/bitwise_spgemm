@@ -214,13 +214,14 @@ __global__ void count_c_elems11_nT(int * offset_tile, int * A_gather_locations, 
 /*Mixed precision + 2 tiles per TCU + refactored code to reduce size of branches + reduced number of conditions to check
  * + removed num_counted_elems + more warps per block + remove shared memory for A and B by using direct fragment access
  * + remove unnecessary pocll */
+template <typename ValueType>
 __global__ void multiply_elemsMixed12_nT(int * offset_tile, int * A_gather_locations, const uint64_t * A_tiles,
-        const float * A_elems, const uint32_t * A_idx, const int * A_row_indices, int * B_gather_locations,
-        const uint64_t * B_tiles, const float * B_elems, const uint32_t * B_idx, const int * B_column_indices,
-        uint64_t * C_tiles, float * C_elems, uint32_t * C_idx, int * C_row_indices, int * C_column_indices, int * idx,
+        const ValueType * A_elems, const uint32_t * A_idx, const int * A_row_indices, int * B_gather_locations,
+        const uint64_t * B_tiles, const ValueType * B_elems, const uint32_t * B_idx, const int * B_column_indices,
+        uint64_t * C_tiles, ValueType * C_elems, uint32_t * C_idx, int * C_row_indices, int * C_column_indices, int * idx,
         uint32_t num_C_tiles) {
 
-    __shared__ float  C[M * N * WARPS_BLOCK];
+    __shared__ int C[M * N * WARPS_BLOCK];
 
     int wid = threadIdx.x / WARP_SIZE;
     int lid = threadIdx.x % WARP_SIZE;
@@ -237,9 +238,9 @@ __global__ void multiply_elemsMixed12_nT(int * offset_tile, int * A_gather_locat
     start[1] = offset_tile[bx2];
     num_tile[1] = offset_tile[bx2 + 1] - start[1];
 
-    wmma::fragment<wmma::matrix_a, M, N, K, half, wmma::row_major> a;
-    wmma::fragment<wmma::matrix_b, M, N, K, half, wmma::row_major> b;
-    wmma::fragment<wmma::accumulator, M, N, K, float> acc;
+    wmma::fragment<wmma::matrix_a, M, N, K, signed char, wmma::row_major> a;
+    wmma::fragment<wmma::matrix_b, M, N, K, signed char, wmma::row_major> b;
+    wmma::fragment<wmma::accumulator, M, N, K, int> acc;
 
     wmma::fill_fragment(acc, 0.0f);
 
@@ -522,7 +523,8 @@ template <typename DerivedPolicy,
           typename MatrixType1,
           typename MatrixType2,
           typename MatrixType3,
-          typename ArrayType1>
+          typename ArrayType1,
+          typename ValueType>
 void coo_spmm_helper_noTuple_sort(cusp::cuda::execution_policy<DerivedPolicy>& exec,
                      size_t workspace_size,
                      size_t begin_row,
@@ -530,13 +532,13 @@ void coo_spmm_helper_noTuple_sort(cusp::cuda::execution_policy<DerivedPolicy>& e
                      size_t begin_segment,
                      size_t end_segment,
                      const MatrixType1& A,
-                     const thrust::device_vector<float>& A_elems,
+                     const thrust::device_vector<ValueType>& A_elems,
                      const thrust::device_vector<uint32_t>& A_idx,
                      const MatrixType2& B,
-                     const thrust::device_vector<float>& B_elems,
+                     const thrust::device_vector<ValueType>& B_elems,
                      const thrust::device_vector<uint32_t>& B_idx,
                      MatrixType3& C,
-                     thrust::device_vector<float>& C_elems,
+                     thrust::device_vector<ValueType>& C_elems,
                      thrust::device_vector<uint32_t>& C_idx,
                      const ArrayType1& B_row_offsets,
                      const ArrayType1& segment_lengths, //contains with how many values each value of A must be multiplied (in the same order/positions as A.column_indices)
@@ -826,13 +828,13 @@ void coo_spmm_helper_noTuple_sort(cusp::cuda::execution_policy<DerivedPolicy>& e
     thrust::fill(C_elems.begin(), C_elems.end(), 0.f);
 
     uint64_t * raw_C_tiles =  reinterpret_cast<uint64_t *>( thrust::raw_pointer_cast(&C.values[0]) );
-    const float *raw_A_elems = thrust::raw_pointer_cast(&A_elems[0]);
+    const ValueType *raw_A_elems = thrust::raw_pointer_cast(&A_elems[0]);
     const uint32_t *raw_A_idx = thrust::raw_pointer_cast(&A_idx[0]);
     const int * raw_A_row_indices =  thrust::raw_pointer_cast(&A.row_indices[0]);
-    const float *raw_B_elems = thrust::raw_pointer_cast(&B_elems[0]);
+    const ValueType *raw_B_elems = thrust::raw_pointer_cast(&B_elems[0]);
     const uint32_t *raw_B_idx = thrust::raw_pointer_cast(&B_idx[0]);
     const int * raw_B_column_indices =  thrust::raw_pointer_cast(&B.column_indices[0]);
-    float *raw_C_elems = thrust::raw_pointer_cast(&C_elems[0]);
+    ValueType *raw_C_elems = thrust::raw_pointer_cast(&C_elems[0]);
     uint32_t *raw_C_idx = thrust::raw_pointer_cast(&C_idx[0]);
     int * raw_C_row_indices =  thrust::raw_pointer_cast(&C.row_indices[0]);
     int * raw_C_column_indices =  thrust::raw_pointer_cast(&C.column_indices[0]);
@@ -907,17 +909,18 @@ void coo_spmm_helper_noTuple_sort(cusp::cuda::execution_policy<DerivedPolicy>& e
 template <typename DerivedPolicy,
           typename MatrixType1,
           typename MatrixType2,
-          typename MatrixType3>
+          typename MatrixType3,
+          typename ValueType>
 void multiplyESC_noTuple(cusp::cuda::execution_policy<DerivedPolicy>& exec,
               const MatrixType1& A,
-              const thrust::device_vector<float>& A_elems, const thrust::device_vector<uint32_t>& A_idx,
+              const thrust::device_vector<ValueType>& A_elems, const thrust::device_vector<uint32_t>& A_idx,
               const MatrixType2& B,
-              const thrust::device_vector<float>& B_elems, const thrust::device_vector<uint32_t>& B_idx,
+              const thrust::device_vector<ValueType>& B_elems, const thrust::device_vector<uint32_t>& B_idx,
               MatrixType3& C,
-              thrust::device_vector<float>& C_elems, thrust::device_vector<uint32_t>& C_idx)
+              thrust::device_vector<ValueType>& C_elems, thrust::device_vector<uint32_t>& C_idx)
 {
     typedef typename MatrixType3::index_type   IndexType;
-    typedef typename MatrixType3::value_type   ValueType;
+    // typedef typename MatrixType3::value_type   ValueType;
     typedef typename MatrixType3::memory_space MemorySpace;
 
     // check whether matrices are empty
@@ -983,12 +986,13 @@ void multiplyESC_noTuple(cusp::cuda::execution_policy<DerivedPolicy>& exec,
             B_elems, B_idx, C, C_elems, C_idx, B_row_offsets, segment_lengths, output_ptr);
 }
 
+// template <typename ValueType>
 void multiplyBmp_noTuple(const cusp::coo_matrix<int, uint64_t, cusp::device_memory>& A,
-    const thrust::device_vector<float>& A_elems, const thrust::device_vector<uint32_t>& A_idx,
+    const thrust::device_vector<signed char>& A_elems, const thrust::device_vector<uint32_t>& A_idx,
     const cusp::coo_matrix<int, uint64_t, cusp::device_memory>& B,
-    const thrust::device_vector<float>& B_elems, const thrust::device_vector<uint32_t>& B_idx,
+    const thrust::device_vector<signed char>& B_elems, const thrust::device_vector<uint32_t>& B_idx,
     cusp::coo_matrix<int, uint64_t, cusp::device_memory>& C,
-    thrust::device_vector<float>& C_elems, thrust::device_vector<uint32_t>& C_idx)
+    thrust::device_vector<signed char>& C_elems, thrust::device_vector<uint32_t>& C_idx)
 {
     using thrust::system::detail::generic::select_system;
 

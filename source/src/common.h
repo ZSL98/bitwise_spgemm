@@ -12,18 +12,10 @@
 
 using namespace nvcuda;
 
-#ifndef MAT_VAL_TYPE
-#define MAT_VAL_TYPE double
-#endif
-
-#ifndef MAT_PTR_TYPE
-#define MAT_PTR_TYPE float
-#endif
-
 #define REPETITIONS 1
 
 #define SPARSITY 99
-#define SPARSITY_A 99
+#define SPARSITY_A 99.5
 #define SPARSITY_B 99.8
 #define BIT_WIDTH 8
 #define MAX_GROUP_NUM 4
@@ -41,60 +33,6 @@ using namespace nvcuda;
 
 #define PRINT_MAT_A_INFO false
 #define PRINT_MAT_B_INFO false
-
-#ifndef SMATRIX
-#define SMATRIX
-typedef struct 
-{
-    int m;
-    int n;
-    int nnz;
-    int isSymmetric;
-	MAT_VAL_TYPE *value;
-	int *columnindex;
-	MAT_PTR_TYPE *rowpointer;
-    int tilem;
-    int tilen;
-    MAT_PTR_TYPE *tile_ptr;
-    int *tile_columnidx;
-    int *tile_rowidx;
-    int *tile_nnz;
-    int numtile;
-    MAT_VAL_TYPE *tile_csr_Value;
-    unsigned char *tile_csr_Col;
-    unsigned char *tile_csr_Ptr;
-    unsigned short *mask;
-    int *csc_tile_ptr;
-    int *csc_tile_rowidx;
-}SMatrix;
-#endif
-
-#ifndef CSRMATRIX
-#define CSRMATRIX
-typedef struct 
-{
-    int m;
-    int n;
-    int nnz;
-    int isSymmetric;
-	MAT_VAL_TYPE *value;
-	int *columnindex;
-	MAT_PTR_TYPE *rowpointer;
-    int tilem;
-    int tilen;
-    MAT_PTR_TYPE *tile_ptr;
-    int *tile_columnidx;
-    int *tile_rowidx;
-    int *tile_nnz;
-    int numtile;
-    MAT_VAL_TYPE *tile_csr_Value;
-    unsigned char *tile_csr_Col;
-    unsigned char *tile_csr_Ptr;
-    unsigned short *mask;
-    int *csc_tile_ptr;
-    int *csc_tile_rowidx;
-}CSRMatrix;
-#endif
 
 #define CHECK_CUDA(func)                                                       \
 {                                                                              \

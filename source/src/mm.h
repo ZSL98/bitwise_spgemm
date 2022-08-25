@@ -52,7 +52,8 @@ using IndexTypeH = int;  //indices
 using ElemIndexTypeH = uint32_t;
 using ValueTypeBMPH = thrust::tuple<uint32_t, uint64_t>; //index in values array, bitmap
 using ValueTypeBMPH_NT = uint64_t; //bitmap
-using ValueTypeH = float; // the actual values of values array
+using ValueTypeH = signed char; // the actual values of values array
+using ValueType = signed char; 
 using MatrixTypeH = cusp::coo_matrix<IndexTypeH,ValueTypeBMPH,cusp::device_memory>;
 using MatrixTypeH_NT = cusp::coo_matrix<IndexTypeH,ValueTypeBMPH_NT,cusp::device_memory>;
 
@@ -60,10 +61,14 @@ using MatrixTypeCOO = cusp::coo_matrix<IndexTypeH,ValueTypeH,cusp::host_memory>;
 
 void multiplyBmp(const MatrixTypeH& A, const thrust::device_vector<ValueTypeH>& A_elems, const MatrixTypeH& B,
     const thrust::device_vector<ValueTypeH>& B_elems, MatrixTypeH& C, thrust::device_vector<ValueTypeH>& C_elems);
-void multiplyBmp_noTuple(const MatrixTypeH_NT& A, const thrust::device_vector<ValueTypeH>& A_elems,
+
+// template <typename ValueType>
+void multiplyBmp_noTuple(const MatrixTypeH_NT& A, const thrust::device_vector<signed char>& A_elems,
         const thrust::device_vector<ElemIndexTypeH>& A_idx, const MatrixTypeH_NT& B,
-        const thrust::device_vector<ValueTypeH>& B_elems, const thrust::device_vector<ElemIndexTypeH>& B_idx,
-        MatrixTypeH_NT& C, thrust::device_vector<ValueTypeH>& C_elems, thrust::device_vector<ElemIndexTypeH>& C_idx);
+        const thrust::device_vector<signed char>& B_elems, const thrust::device_vector<ElemIndexTypeH>& B_idx,
+        MatrixTypeH_NT& C, thrust::device_vector<signed char>& C_elems, thrust::device_vector<ElemIndexTypeH>& C_idx);
+
+
 void get_characteristics(const MatrixTypeH& A, const thrust::device_vector<ValueTypeH>& A_elems, const MatrixTypeH& B,
     const thrust::device_vector<ValueTypeH>& B_elems, MatrixTypeH& C, thrust::device_vector<ValueTypeH>& C_elems,
     const MatrixTypeCOO& A_coo, const MatrixTypeCOO& B_coo, MatrixTypeCOO& C_coo);
