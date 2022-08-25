@@ -14,7 +14,7 @@
 #include <sys/time.h>
 #include "cuda_fp16.h"
 
-#include "utils.h"
+#include "TileSpGEMM_utils.h"
 
 #ifndef MAT_VAL_TYPE
 #define MAT_VAL_TYPE float
@@ -69,11 +69,11 @@
 #define REPEAT_NUM 1
 
 #ifndef TIMING
-#define TIMING 1
+#define TIMING 0
 #endif
 
 #ifndef SPACE
-#define SPACE 1
+#define SPACE 0
 #endif
 
 

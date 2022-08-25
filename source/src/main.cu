@@ -38,7 +38,7 @@
 // #include "TileSpGEMM/utils.h"
 // #include "TileSpGEMM/utils_cuda_scan.h"
 // #include "TileSpGEMM/spgemm_nsparse_kernel.h"
-// #include "TileSpGEMM/csr2tile.h"
+#include "TileSpGEMM/csr2tile.h"
 #include "TileSpGEMM/tilespgemm-cuda.h"
 // #include "TileSpGEMM/spgemm-cpu.h"
 // #include "TileSpGEMM/tile2csr.h"
@@ -578,7 +578,7 @@ void initialize_multiplicand(signed char *h_multiplicand)
 }
 
 void initialize_SMatrix(SMatrix *&matrix, int row_size, int col_size, int64_t nnz, 
-                  int *csrRowPtr, int *csrColIdx, float *csrVal)
+                  int *&csrRowPtr, int *&csrColIdx, float *&csrVal)
 {
     matrix->m = row_size;
     matrix->n = col_size;
@@ -1078,26 +1078,117 @@ int main()
     // TileSpGEMM
 	SMatrix *matrixA = (SMatrix *)malloc(sizeof(SMatrix));
 	SMatrix *matrixB = (SMatrix *)malloc(sizeof(SMatrix));
-    initialize_SMatrix(matrixA, SIZE_M, SIZE_K, nnzA, dA_csr_offsets, dA_csr_columns, dA_csr_values);
-    initialize_SMatrix(matrixB, SIZE_K, SIZE_N, nnzB, dB_csr_offsets, dB_csr_columns, dB_csr_values);
 
-    printf("matrixA-nnz: %d\n", matrixA->nnz);
+    int *hA_csr_offsets = (int*)malloc(sizeof(int) * (m + 1));
+    int *hA_csr_columns = (int*)malloc(sizeof(int) * nnzA);
+    float *hA_csr_values = (float*)malloc(sizeof(float) * nnzA);
+    cudaMemcpy(hA_csr_offsets, dA_csr_offsets, sizeof(int) * (m + 1), cudaMemcpyDeviceToHost);
+    cudaMemcpy(hA_csr_columns, dA_csr_columns, sizeof(int) * nnzA, cudaMemcpyDeviceToHost);
+    cudaMemcpy(hA_csr_values, dA_csr_values, sizeof(float) * nnzA, cudaMemcpyDeviceToHost);
 
-    printf("bitSparse elapsed time: %fms\n", ms);
-    printf("cusparse elapsed time:  %fms\n", cusparse_ms);
-    printf("tSparse elpased time:   %fms\n", tsparse_ms);
+    int *hB_csr_offsets = (int*)malloc(sizeof(int) * (k + 1));
+    int *hB_csr_columns = (int*)malloc(sizeof(int) * nnzB);
+    float *hB_csr_values = (float*)malloc(sizeof(float) * nnzB);
+    cudaMemcpy(hB_csr_offsets, dB_csr_offsets, sizeof(int) * (k + 1), cudaMemcpyDeviceToHost);
+    cudaMemcpy(hB_csr_columns, dB_csr_columns, sizeof(int) * nnzB, cudaMemcpyDeviceToHost);
+    cudaMemcpy(hB_csr_values, dB_csr_values, sizeof(float) * nnzB, cudaMemcpyDeviceToHost);
+
+    initialize_SMatrix(matrixA, SIZE_M, SIZE_K, nnzA, hA_csr_offsets, hA_csr_columns, hA_csr_values);
+    initialize_SMatrix(matrixB, SIZE_K, SIZE_N, nnzB, hB_csr_offsets, hB_csr_columns, hB_csr_values);
+
+    unsigned long long int nnzCub = 0;
+    for (int i = 0; i < matrixA->nnz; i++)
+    {
+        int rowidx = matrixA->columnindex[i];
+        nnzCub += matrixB->rowpointer[rowidx + 1] - matrixB->rowpointer[rowidx];
+    }
+
+    csr2tile_row_major(matrixA);
+    csr2tile_col_major(matrixB);
+
+    free(matrixA->rowpointer);
+    free(matrixA->columnindex);
+    free(matrixA->value);
+
+    int blk_intersec_bitmask_len = ceil((double)matrixA->tilen / 32.0);
+    double densityA = (double)matrixA->numtile / ((double)matrixA->tilem*(double)matrixA->tilen);
+    double densityB = (double)matrixB->numtile / ((double)matrixB->tilem*(double)matrixB->tilen);
+
+    long long int lengthA = (long long int) (matrixA->tilem) * (long long int)( blk_intersec_bitmask_len) ;
+    unsigned int *blk_intersec_bitmask_A = (unsigned int *)malloc(lengthA* sizeof(unsigned int));
+    memset(blk_intersec_bitmask_A, 0, lengthA * sizeof(unsigned int));
+    for (int i = 0; i < matrixA->tilem; i++)
+    {
+        for (int j = matrixA->tile_ptr[i]; j < matrixA->tile_ptr[i + 1]; j++)
+        {
+            int idx = matrixA->tile_columnidx[j];
+            unsigned int bitmask = 1;
+            bitmask <<=  (31- (idx % 32));
+            long long int pos = (long long int)i * (long long int)blk_intersec_bitmask_len + idx / 32;
+            blk_intersec_bitmask_A[pos] |= bitmask;
+        }
+    }
+
+    long long int lengthB = (long long int) (matrixB->tilen) * (long long int)(blk_intersec_bitmask_len) ;
+    unsigned int *blk_intersec_bitmask_B = (unsigned int *)malloc(lengthB * sizeof(unsigned int));
+    memset(blk_intersec_bitmask_B, 0, lengthB * sizeof(unsigned int));
+    for (int i = 0; i < matrixB->tilen; i++)
+    {
+        for (int j = matrixB->csc_tile_ptr[i]; j < matrixB->csc_tile_ptr[i+1]; j++)
+        {
+            int idx = matrixB->csc_tile_rowidx[j];
+            unsigned int bitmask = 0x1;
+            bitmask <<= (31 - (idx % 32));
+            long long int pos = (long long int)i * (long long int )blk_intersec_bitmask_len + idx / 32;
+            blk_intersec_bitmask_B[pos] |= bitmask;
+        }
+    }
+
+    // generate rowidx of blockA
+    int *tile_rowidx_A = (int *)malloc (matrixA->numtile * sizeof(int ) );
+    for (int i = 0; i < matrixA->tilem; i++)
+    {
+        for (int j = matrixA->tile_ptr[i]; j < matrixA->tile_ptr[i+1]; j++)
+        {
+            tile_rowidx_A[j] = i;
+        }
+    }
+
+    SMatrix *matrixC = (SMatrix *)malloc(sizeof(SMatrix));
+    
+    struct timeval tv;
+    unsigned long long int nnzC_computed;
+    double compression_rate = 0;
+    double time_tile = 0;
+    double gflops_tile = 0;
+    double time_step1 =0,time_step2 =0,time_step3 =0,time_malloc=0; 
+
+    float tilespgemm_time = tilespgemm(matrixA,
+               matrixB,
+               matrixC,
+               blk_intersec_bitmask_A,
+               blk_intersec_bitmask_B,
+               blk_intersec_bitmask_len,
+               densityA,
+               densityB,
+               nnzCub,
+               &nnzC_computed,
+               &compression_rate,
+               &time_tile,
+               &gflops_tile,
+               &time_step1,&time_step2,&time_step3,&time_malloc);
+    // printf("matrixA-nnz: %d\n", matrixA->nnz);
+
+    printf("bitSparse elapsed time:   %fms\n", ms);
+    printf("cusparse elapsed time:    %fms\n", cusparse_ms);
+    printf("tSparse elpased time:     %fms\n", tsparse_ms);
+    printf("TileSpGEMM elpased time:  %fms\n", tilespgemm_time);
+
     printf("\nC_sparsity: %f\n", 1.0 - float(C_nnz1)/SIZE_M/SIZE_N);
     
     // print MatA's information
     if (PRINT_MAT_A_INFO)
     {
-        int *hA_csr_offsets = (int*)malloc(sizeof(int) * (m + 1));
-        int *hA_csr_columns = (int*)malloc(sizeof(int) * nnzA);
-        float *hA_csr_values = (float*)malloc(sizeof(float) * nnzA);
-        cudaMemcpy(hA_csr_offsets, dA_csr_offsets, sizeof(int) * (m + 1), cudaMemcpyDeviceToHost);
-        cudaMemcpy(hA_csr_columns, dA_csr_columns, sizeof(int) * nnzA, cudaMemcpyDeviceToHost);
-        cudaMemcpy(hA_csr_values, dA_csr_values, sizeof(float) * nnzA, cudaMemcpyDeviceToHost);
-
         std::cout << "nnzA: " << nnzA << std::endl;
         for (int i = 0; i < m+1; i++)
         {

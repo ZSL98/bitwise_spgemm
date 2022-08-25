@@ -1,5 +1,5 @@
 #include <TileSpGEMM/common.h>
-#include <TileSpGEMM/utils.h>
+#include <TileSpGEMM/TileSpGEMM_utils.h>
 #include <TileSpGEMM/utils_cuda_scan.h>
 #include <TileSpGEMM/nsparse_asm.h>
 #include <TileSpGEMM/spgemm_nsparse_kernel.h>
@@ -1653,7 +1653,7 @@ __global__ void tile_spgemm_step4_cuda_kernel_smem_v3(int *d_blkrowptrA,
                     {
                         unsigned char colidx = ld_gbl_uchar(d_blkcsr_Col_B + nnzbstart + k);
 
-                        MAT_VAL_TYPE valb = ld_gbl_real(d_blkcsr_Val_B + nnzbstart + k);
+                        MAT_VAL_TYPE valb = (MAT_VAL_TYPE)ld_gbl_float(d_blkcsr_Val_B + nnzbstart + k);
 
                         int cnt = binary_search_exact_uchar_kernel(s_blkcsr_Idx_C_local + blkoffseta, 0, blkoffseta_stop - blkoffseta - 1, colidx);
                         if (cnt != -1)
@@ -1679,7 +1679,7 @@ __global__ void tile_spgemm_step4_cuda_kernel_smem_v3(int *d_blkrowptrA,
                     {
                         unsigned char colidx = ld_gbl_uchar(d_blkcsr_Col_B + nnzbstart + k);
 
-                        MAT_VAL_TYPE valb = ld_gbl_real(d_blkcsr_Val_B + nnzbstart + k);
+                        MAT_VAL_TYPE valb = (MAT_VAL_TYPE)ld_gbl_float(d_blkcsr_Val_B + nnzbstart + k);
 
                         int cnt = binary_search_exact_uchar_kernel(s_blkcsr_Idx_C_local + blkoffseta, 0, blkoffseta_stop - blkoffseta - 1, colidx);
                         if (cnt != -1)
@@ -1758,7 +1758,7 @@ __global__ void tile_spgemm_step4_cuda_kernel_smem_v3(int *d_blkrowptrA,
                         {
                             unsigned char colidx = ld_gbl_uchar(d_blkcsr_Col_B + nnzbstart + k);
 
-                            MAT_VAL_TYPE valb = ld_gbl_real(d_blkcsr_Val_B + nnzbstart + k);
+                            MAT_VAL_TYPE valb = (MAT_VAL_TYPE)ld_gbl_float(d_blkcsr_Val_B + nnzbstart + k);
 
                             int cnt = binary_search_exact_uchar_kernel(s_blkcsr_Idx_C_local + blkoffseta, 0, blkoffseta_stop - blkoffseta - 1, colidx);
                             if (cnt != -1)
@@ -1783,7 +1783,7 @@ __global__ void tile_spgemm_step4_cuda_kernel_smem_v3(int *d_blkrowptrA,
                         if (k < stopb)
                         {
                             unsigned char colidx = ld_gbl_uchar(d_blkcsr_Col_B + nnzbstart + k);
-                            MAT_VAL_TYPE valb = ld_gbl_real(d_blkcsr_Val_B + nnzbstart + k);
+                            MAT_VAL_TYPE valb = (MAT_VAL_TYPE)ld_gbl_float(d_blkcsr_Val_B + nnzbstart + k);
 
                             int cnt = binary_search_exact_uchar_kernel(s_blkcsr_Idx_C_local + blkoffseta, 0, blkoffseta_stop - blkoffseta - 1, colidx);
                             if (cnt != -1)
@@ -1969,7 +1969,7 @@ __global__ void tile_spgemm_step4_cuda_kernel_smem_v3_halfwarp(int *d_blkrowptrA
                     for (int k = startb; k < stopb; k++)
                     {
                         unsigned char colidx = ld_gbl_uchar(d_blkcsr_Col_B + nnzbstart + k);
-                        MAT_VAL_TYPE valb = ld_gbl_real(d_blkcsr_Val_B + nnzbstart + k);
+                        MAT_VAL_TYPE valb = (MAT_VAL_TYPE)ld_gbl_float(d_blkcsr_Val_B + nnzbstart + k);
                         int cnt = binary_search_exact_uchar_kernel(s_blkcsr_Idx_C_local + blkoffseta, 0, blkoffseta_stop - blkoffseta - 1, colidx);
                         if (cnt != -1)
                             atomicAdd(&d_blkcsr_Val_C[nnzcstart + blkoffseta + cnt], val * valb);
@@ -1993,7 +1993,7 @@ __global__ void tile_spgemm_step4_cuda_kernel_smem_v3_halfwarp(int *d_blkrowptrA
                     if (k < stopb)
                     {
                         unsigned char colidx = ld_gbl_uchar(d_blkcsr_Col_B + nnzbstart + k);
-                        MAT_VAL_TYPE valb = ld_gbl_real(d_blkcsr_Val_B + nnzbstart + k);
+                        MAT_VAL_TYPE valb = (MAT_VAL_TYPE)ld_gbl_float(d_blkcsr_Val_B + nnzbstart + k);
                         int cnt = binary_search_exact_uchar_kernel(s_blkcsr_Idx_C_local + blkoffseta, 0, blkoffseta_stop - blkoffseta - 1, colidx);
                         if (cnt != -1)
                             d_blkcsr_Val_C[nnzcstart + blkoffseta + cnt] += val * valb;
@@ -2070,7 +2070,7 @@ __global__ void tile_spgemm_step4_cuda_kernel_smem_v3_halfwarp(int *d_blkrowptrA
                         for (int k = startb; k < stopb; k++)
                         {
                             unsigned char colidx = ld_gbl_uchar(d_blkcsr_Col_B + nnzbstart + k);
-                            MAT_VAL_TYPE valb = ld_gbl_real(d_blkcsr_Val_B + nnzbstart + k);
+                            MAT_VAL_TYPE valb = (MAT_VAL_TYPE)ld_gbl_float(d_blkcsr_Val_B + nnzbstart + k);
                             int cnt = binary_search_exact_uchar_kernel(s_blkcsr_Idx_C_local + blkoffseta, 0, blkoffseta_stop - blkoffseta - 1, colidx);
                             if (cnt != -1)
                                 atomicAdd(&d_blkcsr_Val_C[nnzcstart + blkoffseta + cnt], val * valb);
@@ -2094,7 +2094,7 @@ __global__ void tile_spgemm_step4_cuda_kernel_smem_v3_halfwarp(int *d_blkrowptrA
                         if (k < stopb)
                         {
                             unsigned char colidx = ld_gbl_uchar(d_blkcsr_Col_B + nnzbstart + k);
-                            MAT_VAL_TYPE valb = ld_gbl_real(d_blkcsr_Val_B + nnzbstart + k);
+                            MAT_VAL_TYPE valb = (MAT_VAL_TYPE)ld_gbl_float(d_blkcsr_Val_B + nnzbstart + k);
                             int cnt = binary_search_exact_uchar_kernel(s_blkcsr_Idx_C_local + blkoffseta, 0, blkoffseta_stop - blkoffseta - 1, colidx);
                             if (cnt != -1)
                                 d_blkcsr_Val_C[nnzcstart + blkoffseta + cnt] += val * valb;
@@ -2248,7 +2248,7 @@ __global__ void tile_spgemm_step4_cuda_kernel_dns_noatomic_halfwarp(int *d_blkro
                 if (k < stopb)
                 {
                     unsigned char colidx = ld_gbl_uchar(d_blkcsr_Col_B + nnzbstart + k);
-                    MAT_VAL_TYPE valb = ld_gbl_real(d_blkcsr_Val_B + nnzbstart + k);
+                    MAT_VAL_TYPE valb = (MAT_VAL_TYPE)ld_gbl_float(d_blkcsr_Val_B + nnzbstart + k);
                     s_blkcsr_Val_C_local[rowidxa * BLOCK_SIZE + colidx] += val * valb;
                 }
             }
@@ -2322,7 +2322,7 @@ __global__ void tile_spgemm_step4_cuda_kernel_dns_noatomic_halfwarp(int *d_blkro
                         {
                             unsigned char colidx = ld_gbl_uchar(d_blkcsr_Col_B + nnzbstart + k);
 
-                            MAT_VAL_TYPE valb = ld_gbl_real(d_blkcsr_Val_B + nnzbstart + k);
+                            MAT_VAL_TYPE valb = (MAT_VAL_TYPE)ld_gbl_float(d_blkcsr_Val_B + nnzbstart + k);
                             s_blkcsr_Val_C_local[rowidxa * BLOCK_SIZE + colidx] += val * valb;
                         }
                     }
@@ -2492,7 +2492,7 @@ __global__ void tile_spgemm_step4_cuda_kernel_ful_noatomic_halfwarp(int *d_blkro
                 if (k < stopb)
                 {
                     unsigned char colidx = ld_gbl_uchar(d_blkcsr_Col_B + nnzbstart + k);
-                    MAT_VAL_TYPE valb = ld_gbl_real(d_blkcsr_Val_B + nnzbstart + k);
+                    MAT_VAL_TYPE valb = (MAT_VAL_TYPE)ld_gbl_float(d_blkcsr_Val_B + nnzbstart + k);
                     s_blkcsr_Val_C_local[rowidxa * BLOCK_SIZE + colidx] += val * valb;
                 }
             }
@@ -2567,7 +2567,7 @@ __global__ void tile_spgemm_step4_cuda_kernel_ful_noatomic_halfwarp(int *d_blkro
                         {
                             unsigned char colidx = ld_gbl_uchar(d_blkcsr_Col_B + nnzbstart + k);
 
-                            MAT_VAL_TYPE valb = ld_gbl_real(d_blkcsr_Val_B + nnzbstart + k);
+                            MAT_VAL_TYPE valb = (MAT_VAL_TYPE)ld_gbl_float(d_blkcsr_Val_B + nnzbstart + k);
                             s_blkcsr_Val_C_local[rowidxa * BLOCK_SIZE + colidx] += val * valb;
                         }
                     }
@@ -2597,7 +2597,7 @@ __global__ void tile_spgemm_step4_cuda_kernel_ful_noatomic_halfwarp(int *d_blkro
     }
 }
 
-void tilespgemm(SMatrix *matrixA,
+float tilespgemm(SMatrix *matrixA,
                 SMatrix *matrixB,
                 SMatrix *matrixC,
                 unsigned int *blk_intersec_bitmask_A,
@@ -2610,7 +2610,6 @@ void tilespgemm(SMatrix *matrixA,
                 double *compression_rate,
                 double *time_tile,
                 double *gflops_tile,
-                char *filename,
                 double *time_step1, double *time_step2, double *time_step3, double *time_malloc)
 {
 
@@ -3174,9 +3173,9 @@ void tilespgemm(SMatrix *matrixA,
     *time_tile = tile_spgemm_time;
     *gflops_tile = 2.0 * (double)nnzCub / (tile_spgemm_time * 1e6);
 
-    printf("Non-empty tiles of C = %i\n", numblkC);
-    printf("nnzC = %i\n", nnzC);
-    printf("CUDA  TileSpGEMM runtime is %4.2f ms, gflops = %4.2f\n", tile_spgemm_time, *gflops_tile);
+    // printf("Non-empty tiles of C = %i\n", numblkC);
+    // printf("nnzC = %i\n", nnzC);
+    // printf("CUDA  TileSpGEMM runtime is %4.2f ms, gflops = %4.2f\n", tile_spgemm_time, *gflops_tile);
 
     cudaFree(d_blksmem_tny_cnt);
     cudaFree(d_blksmem_sml_cnt);
@@ -3208,4 +3207,6 @@ void tilespgemm(SMatrix *matrixA,
         cudaStreamDestroy(streams[i]);
     }
     free(streams);
+
+    return tile_spgemm_time;
 }

@@ -2,7 +2,7 @@
 #define _SCAN_CUDA_UTILS_
 
 #include "common.h"
-#include "utils.h"
+#include "TileSpGEMM_utils.h"
 
 #include <cuda_runtime.h>
 #include <thrust/device_malloc.h>

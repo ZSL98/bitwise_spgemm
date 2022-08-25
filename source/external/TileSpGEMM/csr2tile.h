@@ -1,5 +1,5 @@
-#include "common.h"
-#include "utils.h"
+#include "TileSpGEMM/common.h"
+#include "TileSpGEMM/TileSpGEMM_utils.h"
 
 /*    STEP1: Calculate the number of non-empty tile of a sparse matrix   */
 /*           Record the offset of tiles in each tile row                 */

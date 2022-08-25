@@ -70,11 +70,13 @@ include src/CMakeFiles/spmm.dir/progress.make
 include src/CMakeFiles/spmm.dir/flags.make
 
 src/CMakeFiles/spmm.dir/spmm_generated_main.cu.o: /home/slzhang/projects/spgemm/test/source/src/main.cu
+src/CMakeFiles/spmm.dir/spmm_generated_main.cu.o: /home/slzhang/projects/spgemm/test/source/external/TileSpGEMM/TileSpGEMM_utils.h
 src/CMakeFiles/spmm.dir/spmm_generated_main.cu.o: /home/slzhang/projects/spgemm/test/source/external/TileSpGEMM/common.h
+src/CMakeFiles/spmm.dir/spmm_generated_main.cu.o: /home/slzhang/projects/spgemm/test/source/external/TileSpGEMM/csr2tile.h
 src/CMakeFiles/spmm.dir/spmm_generated_main.cu.o: /home/slzhang/projects/spgemm/test/source/external/TileSpGEMM/cuda_fp16.h
 src/CMakeFiles/spmm.dir/spmm_generated_main.cu.o: /home/slzhang/projects/spgemm/test/source/external/TileSpGEMM/nsparse_asm.h
+src/CMakeFiles/spmm.dir/spmm_generated_main.cu.o: /home/slzhang/projects/spgemm/test/source/external/TileSpGEMM/spgemm_nsparse_kernel.h
 src/CMakeFiles/spmm.dir/spmm_generated_main.cu.o: /home/slzhang/projects/spgemm/test/source/external/TileSpGEMM/tilespgemm-cuda.h
-src/CMakeFiles/spmm.dir/spmm_generated_main.cu.o: /home/slzhang/projects/spgemm/test/source/external/TileSpGEMM/utils.h
 src/CMakeFiles/spmm.dir/spmm_generated_main.cu.o: /home/slzhang/projects/spgemm/test/source/external/TileSpGEMM/utils_cuda_scan.h
 src/CMakeFiles/spmm.dir/spmm_generated_main.cu.o: /home/slzhang/projects/spgemm/test/source/external/cusp/array1d.h
 src/CMakeFiles/spmm.dir/spmm_generated_main.cu.o: /home/slzhang/projects/spgemm/test/source/external/cusp/array2d.h

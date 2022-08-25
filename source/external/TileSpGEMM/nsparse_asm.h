@@ -103,6 +103,15 @@ __device__ __inline__ real ld_gbl_real(const real *val) {
   return return_value;
 }
 
+__device__ __inline__ float ld_gbl_float(const float *val) {
+
+  float return_value;
+
+  asm("ld.global.cv.f32 %0, [%1];" : "=f"(return_value) : "l"(val));
+  
+  return return_value;
+}
+
 __device__ __inline__ int ld_gbl_int32(const int *col) {
   int return_value;
   asm("ld.global.cv.s32 %0, [%1];" : "=r"(return_value) : "l"(col));
