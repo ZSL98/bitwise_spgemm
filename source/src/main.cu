@@ -52,7 +52,7 @@ template <typename BitMaskType,
           typename ValueType>
 __global__ void generate_groups(BitMaskType *MatB_bit,
                                 BitMaskType *d_group_mask,
-                                int *d_group_ele_row_ind,
+                                // int *d_group_ele_row_ind,
                                 ValueType *d_group_ele_row_val,
                                 InitValueType *d_dense,
                                 int *group_id,
@@ -143,7 +143,7 @@ __global__ void generate_groups(BitMaskType *MatB_bit,
     }
 
     for (int i = 0; i < TILE_WIDTH; i++) {
-        if ((MatB_bit[entry_ind_bit] >> i & 1) == 0x01) {
+        if (MatB_bit[entry_ind_bit] >> (31-i) & 1) {
             group_ele_row_idx[group_idx][i] = threadIdx.x;
         }
     }
@@ -171,13 +171,16 @@ __global__ void generate_groups(BitMaskType *MatB_bit,
         {
             d_group_mask[MAX_GROUP_NUM * bid + i] = row_group[i];
         }
-        for (int i = 0; i < TILE_WIDTH; i++) {
-            d_group_ele_row_ind[(MAX_GROUP_NUM * bid + group_idx) * TILE_WIDTH + i] 
-                    = group_ele_row_idx[group_idx][i];
-            d_group_ele_row_val[(MAX_GROUP_NUM * bid + group_idx) * TILE_WIDTH + i] 
-                    = (ValueType)d_dense_smem[group_ele_row_idx[group_idx][i]][i];
+        for (int g = 0; g < MAX_GROUP_NUM; g++)
+        {
+            for (int i = 0; i < TILE_WIDTH; i++) {
+                // d_group_ele_row_ind[(MAX_GROUP_NUM * bid + group_idx) * TILE_WIDTH + i] 
+                //         = group_ele_row_idx[group_idx][i];
+                d_group_ele_row_val[(MAX_GROUP_NUM * bid + g) * TILE_WIDTH + i] 
+                        = (ValueType)d_dense_smem[group_ele_row_idx[g][i]][i];
+            }
         }
-        group_id[entry_ind_bit] = group_idx;
+        // group_id[entry_ind_bit] = group_idx;
     }
     __syncthreads();
     // Load the csr information back to global memory
@@ -341,7 +344,7 @@ __global__ void dense2bitmask(ValueType *MatB_dense, BitMaskType *MatB_bit)
         {
             if (MatB_dense[entry_ind + i] != 0)
             {
-                atomicOr(&MatB_bit[entry_ind_bit], ((unsigned long long int)1 << i));
+                atomicOr(&MatB_bit[entry_ind_bit], ((unsigned long long int)1 << (63-i)));
             }
         }
     }
@@ -351,7 +354,7 @@ __global__ void dense2bitmask(ValueType *MatB_dense, BitMaskType *MatB_bit)
         {
             if (MatB_dense[entry_ind + i] != 0)
             {
-                atomicOr(&MatB_bit[entry_ind_bit], (1 << i));
+                atomicOr(&MatB_bit[entry_ind_bit], (1 << (31-i)));
             }
         }
     }
@@ -390,6 +393,7 @@ int dense2CSR(int num_rows,
                                         CUSPARSE_DENSETOSPARSE_ALG_DEFAULT,
                                         &bufferSize) )
     CHECK_CUDA( cudaMalloc(&dBuffer, bufferSize) )
+
 
     // execute Sparse to Dense conversion
     CHECK_CUSPARSE( cusparseDenseToSparse_analysis(handle, matA, matB,
@@ -555,9 +559,72 @@ float time_spmmBMP_noTuple(const InputType& A_h, const InputType& B_h)
     return time_elapsed;
 }
 
-
-void initialize_multiplicand(signed char *h_multiplicand)
+template <typename OutputType,
+          typename BitMaskType>
+__global__ void group2dense(OutputType *d_group_value, OutputType *d_dense, int *d_output_group_idx, BitMaskType *d_bitmask)
 {
+    int bid = blockIdx.x + blockIdx.y * gridDim.x;
+    int tid = bid * blockDim.x + threadIdx.x;
+
+    BitMaskType bitmask = d_bitmask[tid];
+    int group_id = d_output_group_idx[tid];
+    if (group_id >= 0)
+    {
+        for (int i = 0; i < TILE_WIDTH; i++)
+        {
+            if (d_bitmask[tid] >> (31 - i) & 0x01)
+            {
+                int in_entry = bid * OUTPUT_MAX_GROUP_NUM * TILE_WIDTH + group_id * TILE_WIDTH + i;
+                int out_entry = (blockIdx.y * blockDim.x + threadIdx.x) * SIZE_N + blockIdx.x * TILE_WIDTH + i;
+                d_dense[out_entry] = d_group_value[in_entry];
+            }
+        }
+    }
+}
+
+
+template <typename OutputType,
+          typename BitMaskType>
+__global__ void dense2group_from_idx(OutputType *d_dense, OutputType *d_group_value, int *d_output_group_idx, BitMaskType *d_bitmask)
+{
+    int bid = blockIdx.x + blockIdx.y * gridDim.x;
+    int tid = bid * blockDim.x + threadIdx.x;
+
+    int group_id = d_output_group_idx[tid];
+
+    if (tid == 4)
+    {
+        printf("\ntid: %d, group_id: %d, bitmask: %d\n", tid, group_id, d_bitmask[tid]);
+    }
+    if (group_id >= 0)
+    {
+        for (int i = 0; i < TILE_WIDTH; i++)
+        {
+            if (tid == 4)
+            {
+                printf("%d", d_bitmask[tid] >> (31 - i) & 0x01);
+            }
+            if (d_bitmask[tid] >> (31 - i) & 0x01)
+            {
+                int in_entry = bid * OUTPUT_MAX_GROUP_NUM * TILE_WIDTH + group_id * TILE_WIDTH + i;
+                int out_entry = (blockIdx.y * blockDim.x + threadIdx.x) * SIZE_N + blockIdx.x * TILE_WIDTH + i;
+                d_group_value[in_entry] = d_dense[out_entry];
+            }
+        }
+        if (tid == 4)
+        {
+            printf("\n");
+        }
+    }
+}
+
+
+void initialize_multiplicand(half *h_multiplicand)
+{
+    for (int i = 0 ; i < 8*16; i++)
+    {
+        h_multiplicand[i] = 0;
+    }
     h_multiplicand[0] = 1;
     h_multiplicand[1] = 2;
     h_multiplicand[2] = 4;
@@ -574,6 +641,23 @@ void initialize_multiplicand(signed char *h_multiplicand)
     h_multiplicand[29] = 32;
     h_multiplicand[30] = 64;
     h_multiplicand[31] = -128;
+
+}
+
+void initialize_diag_multiplicand(half *h_multiplicand)
+{
+    for (int i = 0 ; i < 8*16; i++)
+    {
+        h_multiplicand[i] = 0;
+    }
+    h_multiplicand[0] = 1;
+    h_multiplicand[17] = 1;
+    h_multiplicand[17*2] = 1;
+    h_multiplicand[17*3] = 1;
+    h_multiplicand[17*4] = 1;
+    h_multiplicand[17*5] = 1;
+    h_multiplicand[17*6] = 1;
+    h_multiplicand[17*7] = 1;
 
 }
 
@@ -599,7 +683,8 @@ int main()
     // cudaDeviceSetLimit(cudaLimitMallocHeapSize, 1024*1024*1024);
     using InitValueType = float;
     using ValueType = signed char;
-    using OutputType = int;
+    using OutputType = float;
+    using BitMaskType = int;
 
     const int m = SIZE_M;
     const int k = SIZE_K;
@@ -614,7 +699,7 @@ int main()
 
 	InitValueType* hA_dense = (InitValueType*)malloc(sizeof(InitValueType)*m*k);
     InitValueType* hB_dense = (InitValueType*)malloc(sizeof(InitValueType)*k*n);
-    // InitValueType* hC_dense = (InitValueType*)malloc(sizeof(InitValueType)*m*n);
+    float* hC_dense_float = (float*)malloc(sizeof(float)*m*n);
     fill_random(hA_dense, m, k, SPARSITY_A);
     fill_random(hB_dense, k, n, SPARSITY_B);
     // fill_random(hC_dense, m, n, SPARSITY);
@@ -632,7 +717,7 @@ int main()
     int *dB_group_id, *dB_spilled_row_cnt, *dB_spilled_nnz;
     int *dB_spilled_row_hash_table_gmem, *dB_spilled_row_hash_table_reverse_gmem;
     int *dB_group_ele_ind;
-    int *dB_bitmask, *dB_groupmask;
+    BitMaskType *dB_bitmask, *dB_groupmask;
 
     // basic allocation
     CHECK_CUDA( cudaMalloc((void**) &dA_dense,          m * k * sizeof(InitValueType)) )
@@ -642,17 +727,15 @@ int main()
     CHECK_CUDA( cudaMalloc((void**) &dC_csrOffsets,    (m + 1) * sizeof(int)) )
 
     // advanced allocation
-    CHECK_CUDA( cudaMalloc((void**) &dB_bitmask,        k * n / TILE_WIDTH * sizeof(int)) )
+    CHECK_CUDA( cudaMalloc((void**) &dB_bitmask,        k * n / TILE_WIDTH * sizeof(BitMaskType)) )
     CHECK_CUDA( cudaMalloc((void**) &dB_groupmask,      tileB_cnt * MAX_GROUP_NUM * sizeof(int)) )
     CHECK_CUDA( cudaMalloc((void**) &dB_group_ele_ind,  k * n / SPLIT_K * MAX_GROUP_NUM * sizeof(int)) )
     CHECK_CUDA( cudaMalloc((void**) &dB_group_ele_val,  k * n / SPLIT_K * MAX_GROUP_NUM * sizeof(ValueType)) )
     CHECK_CUDA( cudaMalloc((void**) &dB_group_id,       k * n / TILE_WIDTH * sizeof(int)) )
     CHECK_CUDA( cudaMalloc((void**) &dB_spilled_row_cnt,tileB_cnt * sizeof(int)) )
     CHECK_CUDA( cudaMalloc((void**) &dB_spilled_nnz,    tileB_cnt * sizeof(int)) )
-    CHECK_CUDA( cudaMalloc((void**) &dB_spilled_row_hash_table_gmem,
-                                    tileB_cnt * SPLIT_K * sizeof(int)) )
-    CHECK_CUDA( cudaMalloc((void**) &dB_spilled_row_hash_table_reverse_gmem,
-                                   tileB_cnt * SPLIT_K * sizeof(int)) )
+    CHECK_CUDA( cudaMalloc((void**) &dB_spilled_row_hash_table_gmem, tileB_cnt * SPLIT_K * sizeof(int)) )
+    CHECK_CUDA( cudaMalloc((void**) &dB_spilled_row_hash_table_reverse_gmem, tileB_cnt * SPLIT_K * sizeof(int)) )
 
     
     CHECK_CUDA( cudaMemcpy(dA_dense, hA_dense, m * k * sizeof(InitValueType), cudaMemcpyHostToDevice) )
@@ -693,14 +776,13 @@ int main()
                             dA_tile_row_nnz
                             );
 
-
     int64_t nnzB;
     dense2CSR(k, n, dB_dense, dB_csr_values, dB_csr_offsets, dB_csr_columns, nnzB);
 
     printf("\nMatrix B generate groups...\n");
     generate_groups<<<grid1, block1>>>(dB_bitmask,                            // input
                                      dB_groupmask,                          // output, for visualization
-                                     dB_group_ele_ind,                      // output, not necessary
+                                    //  dB_group_ele_ind,                      // output, not necessary
                                      dB_group_ele_val,                      // output
                                      dB_dense,                              // input
                                      dB_group_id,                           // output
@@ -712,6 +794,16 @@ int main()
                                      dB_spilled_row_hash_table_gmem,
                                      dB_spilled_row_hash_table_reverse_gmem // output
                                      );
+
+    ValueType *hB_group_ele_val = (ValueType *)malloc(k * n / SPLIT_K * MAX_GROUP_NUM * sizeof(ValueType));
+    cudaMemcpy(hB_group_ele_val, dB_group_ele_val, k * n / SPLIT_K * MAX_GROUP_NUM * sizeof(ValueType), cudaMemcpyDeviceToHost);
+    printf("dB_group_value\n");
+    printMatrix(4, 32, hB_group_ele_val, "group");
+
+    int *hB_groupmask = (int*)malloc(tileB_cnt * MAX_GROUP_NUM * sizeof(int));
+    cudaMemcpy(hB_groupmask, dB_groupmask, tileB_cnt * MAX_GROUP_NUM * sizeof(int), cudaMemcpyDeviceToHost);
+    printintMatrix_32(16, hB_groupmask, "B_groupmask");
+    
 
     int *hB_spilled_nnz = (int*)malloc(tileB_cnt * sizeof(int));
     int *hB_spilled_row_cnt = (int*)malloc(tileB_cnt * sizeof(int));
@@ -765,19 +857,23 @@ int main()
     cudaMemcpy(hB_tile_spilled_csrColInd, dB_tile_spilled_csrColInd, nnz_cnt * sizeof(int), cudaMemcpyDeviceToHost);
     cudaMemcpy(hB_tile_spilled_csrRowPtr, dB_tile_spilled_csrRowPtr, row_cnt * sizeof(int), cudaMemcpyDeviceToHost);
 
-    signed char *d_multiplicand;
-    CHECK_CUDA( cudaMalloc((void**) &d_multiplicand,  8 * 16 * sizeof(signed char)) )
-    signed char *h_multiplicand = (signed char*)malloc(8 * 16 * sizeof(signed char));
+    half *d_multiplicand;
+    CHECK_CUDA( cudaMalloc((void**) &d_multiplicand,  8 * 16 * sizeof(half)) )
+    half *h_multiplicand = (half*)malloc(8 * 16 * sizeof(half));
     initialize_multiplicand(h_multiplicand);
-    cudaMemcpy(d_multiplicand, h_multiplicand, 8 * 16 * sizeof(signed char), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_multiplicand, h_multiplicand, 8 * 16 * sizeof(half), cudaMemcpyHostToDevice);
 
-
-    OutputType *dC_final_result_gmem;
-    CHECK_CUDA( cudaMalloc((void**) &dC_final_result_gmem,  OUTPUT_MAX_GROUP_NUM * SIZE_N * sizeof(OutputType)) )
 
     int tileC_cnt = SIZE_M * SIZE_N / TILE_HEIGHT / TILE_WIDTH;
+    float *dC_group_value;
+    int *dC_bitmask;
+    BitMaskType *dC_groupmask;
     int *dC_spilled_row_cnt, *dC_spilled_nnz, *dC_output_group_idx;
     int *dC_spilled_row_row_idx, *dC_spilled_row_tile_idx;
+    CHECK_CUDA( cudaMalloc((void**) &dC_group_value,  tileC_cnt * OUTPUT_MAX_GROUP_NUM * TILE_WIDTH * sizeof(float)) )
+    CHECK_CUDA( cudaMalloc((void**) &dC_bitmask,  SIZE_M * SIZE_N / TILE_WIDTH * sizeof(int)) )
+    CHECK_CUDA( cudaMalloc((void**) &dC_groupmask,  tileC_cnt * OUTPUT_MAX_GROUP_NUM * sizeof(BitMaskType)) )
+    // CHECK_CUDA( cudaMalloc((void**) &dC_groupmask,  SIZE_M * SIZE_N / TILE_WIDTH * sizeof(BitMaskType)) )
     CHECK_CUDA( cudaMalloc((void**) &dC_spilled_row_cnt,  tileC_cnt * sizeof(int)) )
     CHECK_CUDA( cudaMalloc((void**) &dC_spilled_nnz,  tileC_cnt * sizeof(int)) )
     CHECK_CUDA( cudaMalloc((void**) &dC_output_group_idx,  SIZE_M * SIZE_N / TILE_WIDTH * sizeof(int)) )
@@ -808,6 +904,8 @@ int main()
                                       dA_tiled_csr_column,  
                                       dA_tile_nnz_acc, 
                                       dC_output_group_idx,
+                                      dC_bitmask,
+                                      dC_groupmask,
                                       dC_spilled_row_row_idx,
                                       dC_spilled_row_tile_idx,
                                       dC_spilled_row_cnt_offset,
@@ -815,6 +913,21 @@ int main()
                                       dC_spilled_row_buffersize,
                                       dC_spilled_nnz_buffersize
                                       );
+
+    int* hC_output_group_idx = (int*) malloc(SIZE_M * SIZE_N / TILE_WIDTH * sizeof(int));
+    cudaMemcpy(hC_output_group_idx, dC_output_group_idx, SIZE_M * SIZE_N / TILE_WIDTH * sizeof(int), cudaMemcpyDeviceToHost);
+    printf("\n hC_output_group_idx: %d\n", hC_output_group_idx[0]);
+    printMatrix(16, 16, hC_output_group_idx, "hC_output_group_idx");
+
+    BitMaskType* hC_groupmask = (BitMaskType*)malloc(tileC_cnt * OUTPUT_MAX_GROUP_NUM * sizeof(BitMaskType));
+    cudaMemcpy(hC_groupmask, dC_groupmask, tileC_cnt * OUTPUT_MAX_GROUP_NUM * sizeof(BitMaskType), cudaMemcpyDeviceToHost);
+    printf("\n hC_groupmask: %d\n", hC_groupmask[0]);
+    printintMatrix_32(16, hC_groupmask, "hC_groupmask");
+
+    int* hC_bitmask = (int*)malloc(SIZE_M * SIZE_N / TILE_WIDTH * sizeof(int));
+    cudaMemcpy(hC_bitmask, dC_bitmask, SIZE_M * SIZE_N / TILE_WIDTH * sizeof(int), cudaMemcpyDeviceToHost);
+    printf("\n hC_bitmask: %d\n", hC_bitmask[4]);
+    printintMatrix_32(16, hC_bitmask, "hC_bitmask");
 
     // printf("pre_spgemm success!\n");
     int *hC_spilled_row_buffersize = (int*)malloc(sizeof(int));
@@ -873,23 +986,52 @@ int main()
     //                                             dC_final_result_gmem
     //                                             );
 
-    spgemm_compute_1dthread_tcore<<<grid_2d, block_1d>>>(dB_bitmask, 
+    ValueType *d_probe;
+    CHECK_CUDA( cudaMalloc((void**) &d_probe,     16 * 8 * 32 * sizeof(ValueType)) )
+
+    spgemm_compute_1dthread_tcore<<<grid_2d, block_1d>>>(
+                                                dB_bitmask, 
                                                 dB_group_id, 
                                                 dB_spilled_row_hash_table_reverse_gmem,
                                                 dB_group_ele_val,
+
                                                 dB_spilled_row_cnt_offset,
                                                 dB_spilled_nnz_offset,
+
                                                 dB_tile_spilled_csrVal,                // output
                                                 dB_tile_spilled_csrColInd,             // output
                                                 dB_tile_spilled_csrRowPtr,             // output
+
                                                 dA_tiled_csr_offset,
                                                 dA_tiled_csr_column,
                                                 dA_tiled_csr_value,
                                                 dA_tile_nnz_acc,
+
                                                 dC_output_group_idx,
-                                                dC_final_result_gmem,
-                                                d_multiplicand
+                                                dC_group_value,
+                                                d_multiplicand,
+                                                d_probe
                                                 );
+
+
+    ValueType *h_probe = (ValueType *)malloc(16 * 8 * 32 * sizeof(ValueType));
+    cudaMemcpy(h_probe, d_probe, 16 * 8 * 32 * sizeof(ValueType), cudaMemcpyDeviceToHost);
+    printf("group_indicator\n");
+    printMatrix(32, 32, h_probe, "group_indicator");
+
+    float* hC_group_value = (float *)malloc(tileC_cnt * TILE_WIDTH * OUTPUT_MAX_GROUP_NUM * sizeof(float));
+    cudaMemcpy(hC_group_value, dC_group_value, tileC_cnt * TILE_WIDTH * OUTPUT_MAX_GROUP_NUM * sizeof(float), cudaMemcpyDeviceToHost);
+    printf("group_value\n");
+    printMatrix(16, 32, hC_group_value, "hC_group_value", 6);
+
+    OutputType* hC_dense = (OutputType*)malloc(sizeof(OutputType)*m*n);
+    OutputType* dC_dense;
+    CHECK_CUDA( cudaMalloc((void**) &dC_dense, m * n * sizeof(OutputType)) )
+    // group2dense<<<grid_2d, block_1d>>>(dC_group_value, dC_dense, dC_output_group_idx, dC_bitmask);
+    // cudaMemcpy(hC_dense, dC_dense, SIZE_M * SIZE_N * sizeof(OutputType), cudaMemcpyDeviceToHost);
+    
+    printMatrixTile(32, 32, SIZE_K, hA_dense, "hA_dense");
+    // printMatrixTile(32, 32, SIZE_N, hC_dense, "BitSparse result");
 
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
@@ -908,10 +1050,8 @@ int main()
 
     int *hC_spilled_row_cnt = (int*)malloc(tileC_cnt * sizeof(int));
     int *hC_spilled_nnz = (int*)malloc(tileC_cnt * sizeof(int));
-    int *hC_output_group_idx = (int*)malloc(SIZE_M * SIZE_N / TILE_WIDTH * sizeof(int));
     cudaMemcpy(hC_spilled_row_cnt, dC_spilled_row_cnt, tileC_cnt * sizeof(int), cudaMemcpyDeviceToHost);
     cudaMemcpy(hC_spilled_nnz, dC_spilled_nnz, tileC_cnt * sizeof(int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(hC_output_group_idx, dC_output_group_idx, SIZE_M * SIZE_N / TILE_WIDTH * sizeof(int), cudaMemcpyDeviceToHost);
 
     printf("hC_spilled_row_cnt: %d\n\n", *hC_spilled_row_buffersize);
 
@@ -1014,9 +1154,9 @@ int main()
     cusparseDnMatDescr_t matC_dense;
     void*                dBuffer    = NULL;
     size_t               bufferSize = 0;
-    float                *dC_dense;
-    CHECK_CUDA( cudaMalloc((void**) &dC_dense, SIZE_M * SIZE_N * sizeof(float)))
-    CHECK_CUSPARSE( cusparseCreateDnMat(&matC_dense, SIZE_M, SIZE_N, SIZE_N, dC_dense,
+    float                *dC_dense_float;
+    CHECK_CUDA( cudaMalloc((void**) &dC_dense_float, SIZE_M * SIZE_N * sizeof(float)))
+    CHECK_CUSPARSE( cusparseCreateDnMat(&matC_dense, SIZE_M, SIZE_N, SIZE_N, dC_dense_float,
                                         CUDA_R_32F, CUSPARSE_ORDER_ROW) )
 
     CHECK_CUSPARSE( cusparseSparseToDense_bufferSize(
@@ -1038,9 +1178,17 @@ int main()
     CHECK_CUSPARSE( cusparseDestroy(handle) )
 
     // device result check
-    // CHECK_CUDA( cudaMemcpy(hC_dense, dC_dense, SIZE_M * SIZE_N * sizeof(OutputType), cudaMemcpyDeviceToHost) )
+    CHECK_CUDA( cudaMemcpy(hC_dense_float, dC_dense_float, SIZE_M * SIZE_N * sizeof(float), cudaMemcpyDeviceToHost) )
 
-    // printMatrixTile(32, 32, SIZE_N, hC_dense, "Mat C ground truth (tile)");
+    printMatrixTile(32, 32, SIZE_N, hC_dense_float, "Mat C ground truth (tile)");
+
+    float *dC_group_float;
+    CHECK_CUDA( cudaMalloc((void**) &dC_group_float,  tileC_cnt * OUTPUT_MAX_GROUP_NUM * TILE_WIDTH * sizeof(float)) )
+    dense2group_from_idx<<<grid_2d, block_1d>>>(dC_dense_float, dC_group_float, dC_output_group_idx, dC_bitmask);
+    float *hC_group_float = (float *)malloc(tileC_cnt * OUTPUT_MAX_GROUP_NUM * TILE_WIDTH * sizeof(float));
+    CHECK_CUDA( cudaMemcpy(hC_group_float, dC_group_float, tileC_cnt * OUTPUT_MAX_GROUP_NUM * TILE_WIDTH * sizeof(float), cudaMemcpyDeviceToHost) )
+    printf("\n\nMat C group rebuild from ground truth\n");
+    printMatrix(16, 32, hC_group_float, "Mat C group rebuild from ground truth", 6);
 
     // tSparse
     dim3 grid_for_convert_A(SIZE_M/32, SIZE_K/32, 1), grid_for_convert_B(SIZE_K/32, SIZE_N/32, 1);
@@ -1295,23 +1443,23 @@ int main()
     }
 
 
-    if (TILE_WIDTH == 64)
-    {
-        unsigned long long int *hB_groupmask = 
-        (unsigned long long int*)malloc(k * n / SPLIT_K / TILE_WIDTH * MAX_GROUP_NUM * sizeof(unsigned long long int));
-        cudaMemcpy(hB_groupmask, dB_groupmask, k * n / SPLIT_K / TILE_WIDTH * MAX_GROUP_NUM * sizeof(unsigned long long int), cudaMemcpyDeviceToHost);
-    }
-    else if (TILE_WIDTH == 32)
-    {
-        int *hB_groupmask = (int*)malloc(k * n / SPLIT_K / TILE_WIDTH * MAX_GROUP_NUM * sizeof(int));
-        cudaMemcpy(hB_groupmask, dB_groupmask, k * n / SPLIT_K / TILE_WIDTH * MAX_GROUP_NUM * sizeof(int), cudaMemcpyDeviceToHost);
-        printintMatrix_32(16, hB_groupmask, "B_groupmask");
+    // if (TILE_WIDTH == 64)
+    // {
+    //     unsigned long long int *hB_groupmask = 
+    //     (unsigned long long int*)malloc(k * n / SPLIT_K / TILE_WIDTH * MAX_GROUP_NUM * sizeof(unsigned long long int));
+    //     cudaMemcpy(hB_groupmask, dB_groupmask, k * n / SPLIT_K / TILE_WIDTH * MAX_GROUP_NUM * sizeof(unsigned long long int), cudaMemcpyDeviceToHost);
+    // }
+    // else if (TILE_WIDTH == 32)
+    // {
+    //     int *hB_groupmask = (int*)malloc(k * n / SPLIT_K / TILE_WIDTH * MAX_GROUP_NUM * sizeof(int));
+    //     cudaMemcpy(hB_groupmask, dB_groupmask, k * n / SPLIT_K / TILE_WIDTH * MAX_GROUP_NUM * sizeof(int), cudaMemcpyDeviceToHost);
+    //     printintMatrix_32(16, hB_groupmask, "B_groupmask");
 
-        std::cout << "A random number: " << rand() % 100 << std::endl;
-        int *hB_group_ele_ind = (int*)malloc(k * n / SPLIT_K * MAX_GROUP_NUM * sizeof(int));
-        cudaMemcpy(hB_group_ele_ind, dB_group_ele_ind, k * n / SPLIT_K * MAX_GROUP_NUM * sizeof(int), cudaMemcpyDeviceToHost);
+    //     std::cout << "A random number: " << rand() % 100 << std::endl;
+    //     int *hB_group_ele_ind = (int*)malloc(k * n / SPLIT_K * MAX_GROUP_NUM * sizeof(int));
+    //     cudaMemcpy(hB_group_ele_ind, dB_group_ele_ind, k * n / SPLIT_K * MAX_GROUP_NUM * sizeof(int), cudaMemcpyDeviceToHost);
 
-    }
+    // }
     
     // size_t *size;
     // cudaDeviceGetLimit(size, cudaLimitMallocHeapSize);

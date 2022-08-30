@@ -1,13 +1,33 @@
 #include <stdlib.h>
 #include <stdio.h>
-#include "common.h"
-#include "utils.h"
+
+#include <cstdlib>
+#include <iostream>
+
+#include "src/common.h"
+#include "src/utils.h"
 
 using namespace nvcuda;
 
 #define NUM_BLOCKS 4
 
 __device__ int* dataptr[NUM_BLOCKS]; // Per-block pointer
+
+__device__ __forceinline__
+void ldg32_nc(float &reg, const void *ptr, bool guard) {
+    asm volatile (
+        "{.reg .pred p;\n"
+        " setp.ne.b32 p, %2, 0;\n"
+#if __CUDACC_VER_MAJOR__ >= 11 && __CUDACC_VER_MINOR__ >= 4 && \
+    __CUDA_ARCH__ >= 750
+        " @p ld.global.nc.L2::128B.f32 %0, [%1];}\n"
+#else
+        " @p ld.global.nc.f32 %0, [%1];}\n"
+#endif
+        : "=f"(reg)
+        : "l"(ptr), "r"((int)guard)
+    );
+}
 
 __global__ void allocmem()
 {
@@ -74,35 +94,90 @@ __global__ void my_kernel2(int *d_mem1, int *d_mem2)
     __syncthreads();
 }
 
-__global__ void wmma_test(half *A, half *B, float *C)
+
+void initialize_multiplicand(signed char *h_multiplicand)
+{
+    h_multiplicand[0] = 1;
+    h_multiplicand[1] = 2;
+    h_multiplicand[2] = 4;
+    h_multiplicand[3] = 8;
+    h_multiplicand[4] = 16;
+    h_multiplicand[5] = 32;
+    h_multiplicand[6] = 64;
+    h_multiplicand[7] = -128;
+    h_multiplicand[24] = 1;
+    h_multiplicand[25] = 2;
+    h_multiplicand[26] = 4;
+    h_multiplicand[27] = 8;
+    h_multiplicand[28] = 16;
+    h_multiplicand[29] = 32;
+    h_multiplicand[30] = 64;
+    h_multiplicand[31] = -128;
+
+}
+
+void initialize_diag_multiplicand(half *h_multiplicand)
+{
+    printf("Stop it. Get some help1.\n");
+    for (int i = 0 ; i < 8*16; i++)
+    {
+        h_multiplicand[i] = 0;
+    }
+    printf("Stop it. Get some help2.\n");
+    h_multiplicand[0] = 1;
+    h_multiplicand[17] = 1;
+    h_multiplicand[17*2] = 1;
+    h_multiplicand[17*3] = 1;
+    h_multiplicand[17*4] = 1;
+    h_multiplicand[17*5] = 1;
+    h_multiplicand[17*6] = 1;
+    h_multiplicand[17*7] = 1;
+
+}
+
+__global__ void wmma_test_v2(half *A, half *B, signed char *multiplicand)
 {
     int warp_id = threadIdx.x / 32;
 
-    for (int i = 0; i < 8; i++)
-    {
-        for (int j = 0; j < 16; j++)
-        {
-            // if (i == 0 && j == 8)
-            // {
-            //     A[i*16+j] = 1;   
-            // }
-            // else{
-            //     A[i*16+j] = 0;
-            // }
-            A[i*16+j] = i*16+j;
-        }
-    }
+    // Declare the fragments
+    nvcuda::wmma::fragment<wmma::matrix_a, 8, 32, 16, signed char, wmma::row_major> A_frag;
+    nvcuda::wmma::fragment<wmma::matrix_b, 8, 32, 16, signed char, wmma::row_major> B_frag[8];
+    nvcuda::wmma::fragment<wmma::accumulator, 8, 32, 16, int> C_frag[8];
 
-    for (int n = 0; n < 8; n++)
-    {
-        for (int i = 0; i < 16; i++)
-        {
-            for (int j = 0; j < 32; j++)
-            {
-                B[n*16*32 + i*32 + j] = n;
-            }
-        }
-    }
+    nvcuda::wmma::load_matrix_sync(A_frag, multiplicand, 16);
+
+}
+
+__global__ void wmma_test(half *A, half *B, float *C)
+{
+    int warp_id = threadIdx.x / 32;
+    int lane_id = threadIdx.x % 32;
+
+    // for (int i = 0; i < 8; i++)
+    // {
+    //     for (int j = 0; j < 16; j++)
+    //     {
+    //         // if (i == 0 && j == 8)
+    //         // {
+    //         //     A[i*16+j] = 1;   
+    //         // }
+    //         // else{
+    //         //     A[i*16+j] = 0;
+    //         // }
+    //         A[i*16+j] = i*16+j;
+    //     }
+    // }
+
+    // for (int n = 0; n < 8; n++)
+    // {
+    //     for (int i = 0; i < 16; i++)
+    //     {
+    //         for (int j = 0; j < 32; j++)
+    //         {
+    //             B[n*16*32 + i*32 + j] = n;
+    //         }
+    //     }
+    // }
     // Declare the fragments
     nvcuda::wmma::fragment<wmma::matrix_a, 8, 32, 16, half, wmma::row_major> A_frag;
     nvcuda::wmma::fragment<wmma::matrix_b, 8, 32, 16, half, wmma::row_major> B_frag[8];
@@ -111,20 +186,33 @@ __global__ void wmma_test(half *A, half *B, float *C)
     // Initialize the output to zero
     for (int i = 0; i < 8; i++)
     {
-        nvcuda::wmma::fill_fragment(C_frag[i], 0.0f);
+        nvcuda::wmma::fill_fragment(C_frag[i], 0);
     }
 
     // Load the inputs
     nvcuda::wmma::load_matrix_sync(A_frag, A, 16);
-    for (int i = 0; i < 8; i++)
+    // nvcuda::wmma::fill_fragment(A_frag, 0);
+    // for (int i = 0; i < 8; i++)
+    // {
+    //     nvcuda::wmma::load_matrix_sync(B_frag[i], &B[i*16*32], 32);
+    // }
+
+    // if (threadIdx.x == 4)
+    // {
+    //     B_frag[0].x[0] = 1;
+    // }
+
+    #pragma unroll
+    for (int k = 0; k < 16; k++)
     {
-        nvcuda::wmma::load_matrix_sync(B_frag[i], &B[i*16*32], 32);
+        int row = lane_id % 4 * 2 + k%2 + k%8/4*8;
+        // int col = lane_id / 4 + (k/2)/4*2+(k%2);
+        int col = lane_id / 4 + 8 * ((k/8)*2+(k%4)/2);
+        int index = (k%8)/4;
+        B_frag[warp_id].x[k] = col;
     }
 
-    if (threadIdx.x == 4)
-    {
-        B_frag[0].x[0] = 1;
-    }
+    __syncthreads();
 
     // for (int i = 0; i < 8; i++)
     // {
@@ -148,6 +236,25 @@ __global__ void wmma_test(half *A, half *B, float *C)
         printf("k = %d\n", k);
     }
 
+}
+
+__global__ void test_kernel(signed char *dA, signed char *dB)
+{
+    // printf("11111");
+    __shared__ signed char smem1[32];
+    __shared__ signed char smem2[32];
+
+    smem1[threadIdx.x] = dA[threadIdx.x];
+    dB[threadIdx.x] = smem1[threadIdx.x];
+
+    // printf("smem");
+    if (threadIdx.x == 0)
+    {
+        printf("smem1: %d\n", smem1[2]);
+        printf("dB: %d\n", dB[2]);
+    }
+    // float ldg_reg[4];
+    // ldg32_nc(ldg_reg)
 }
 
 int main()
@@ -200,6 +307,10 @@ int main()
 
     cudaDeviceSynchronize();*/
 
+
+
+
+
     half *d_A, *d_B;
     float *d_C;
 
@@ -207,13 +318,19 @@ int main()
     CHECK_CUDA( cudaMalloc((void**) &d_B, 8 * 16 * 32 * sizeof(half))   )
     CHECK_CUDA( cudaMalloc((void**) &d_C, 8 * 8 * 32 * sizeof(float))   )
 
+    
+    half *h_A = (half*)malloc(8 * 16 * sizeof(half));
+    initialize_diag_multiplicand(h_A);
+    cudaMemcpy(d_A, h_A, 8 * 16 * sizeof(half), cudaMemcpyHostToDevice);
+
+    printf("Stop it. Get some help.\n");
+
     wmma_test<<<1, 256>>>(d_A, d_B, d_C);
 
-    half *h_A = (half*)malloc(8 * 16 * sizeof(half));
     half *h_B = (half*)malloc(8 * 16 * 32 * sizeof(half));
     float *h_C = (float*)malloc(8 * 8 * 32 * sizeof(float));
 
-    cudaMemcpy(h_A, d_A, 8 * 16 * sizeof(half), cudaMemcpyDeviceToHost);
+    // cudaMemcpy(h_A, d_A, 8 * 16 * sizeof(half), cudaMemcpyDeviceToHost);
     cudaMemcpy(h_B, d_B, 8 * 16 * 32 * sizeof(half), cudaMemcpyDeviceToHost);
     cudaMemcpy(h_C, d_C, 8 * 8 * 32 * sizeof(float), cudaMemcpyDeviceToHost);
 
@@ -225,7 +342,31 @@ int main()
 
     printf("-----------------\n");
 
-    printMatrix(8, 32, h_C, "h_C");
+    printMatrix(8, 32, h_C, "h_C", 6);
+
+
+
+
+    // signed char *d_A, *d_B;
+    // signed char *h_B = (signed char *)malloc(32 * sizeof(signed char));
+    // signed char h_A[] = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32};
+    // cudaMalloc((void**) &d_A, 32 * sizeof(signed char));
+    // cudaMalloc((void**) &d_B, 32 * sizeof(signed char));
+    // cudaMemcpy(d_A, h_A, 32*sizeof(signed char), cudaMemcpyHostToDevice);
+
+    // printf("test begin\n");
+    // test_kernel<<<1, 32>>>(d_A, d_B);
+    // cudaMemcpy(h_B, d_B, 32*sizeof(signed char), cudaMemcpyDeviceToHost);
+
+    // cudaDeviceSynchronize();
+    // printf("test end\n");
+
+    // for (int i = 0; i < 32; i++)
+    // {
+    //     printf("value: %d\n", h_B[i]);
+    // }
+
+    // std::cout << std::endl;
 
     return 0;
 }

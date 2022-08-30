@@ -44,20 +44,20 @@ void printintMatrix(int m, int n, const int*A, const char* name)
 }
 
 template <typename type>
-void printMatrix(int m, int n, const type*A, const char* name)
+void printMatrix(int m, int n, const type*A, const char* name, int print_width = 4)
 {
     for(int row = 0 ; row < m ; row++){
         for(int col = 0 ; col < n ; col++){
             float Areg = A[col + row*n];
             // printf("%s(%d,%d) = %f\n", name, row+1, col+1, Areg);
-            std::cout << std::left << std::setw(4) << Areg;
+            std::cout << std::left << std::setw(print_width) << Areg;
         }
         std::cout << std::endl;
     }
 }
 
-template <typename type>
-void printMatrixTile(int m, int n, int row_len, const type*A, const char* name)
+template <typename OutputType>
+void printMatrixTile(int m, int n, int row_len, const OutputType*A, const char* name)
 {
     std::cout << name << std::endl;
     for(int row = 0 ; row < m ; row++){
@@ -74,7 +74,7 @@ void _itoa(const unsigned long long int a, char *s)
 {
     for (int i = 0; i < 64; i++)
     {
-        if (((a >> i) & 1) == 0x01)
+        if (((a >> (63-i)) & 1) == 0x01)
         {
             s[i] = '1';
         }
@@ -86,7 +86,7 @@ void _itoa_32(const int a, char *s)
 {
     for (int i = 0; i < 32; i++)
     {
-        if (((a >> i) & 1) == 0x01)
+        if (((a >> (31-i)) & 1) == 0x01)
         {
             s[i] = '1';
         }
