@@ -997,7 +997,8 @@ __global__ void pre_spgemm(
                         int *dC_spilled_row_cnt_offset,
                         int *dC_spilled_nnz_offset,
                         int *dC_spilled_row_buffersize,
-                        int *dC_spilled_nnz_buffersize
+                        int *dC_spilled_nnz_buffersize,
+                        int *nnz
                         )
 {
     int bid = blockIdx.x + blockIdx.y * gridDim.x;
@@ -1058,12 +1059,20 @@ __global__ void pre_spgemm(
     __syncthreads();
 
     dC_bitmask[tid] = bit_indicator;
+    // atomicAdd(nnz, __popc(bit_indicator));
 
     // printf("bit_indicator: %i\n", bit_indicator);
     int output_group_idx = 0;
     BitMaskType and_result;
     BitMaskType expected = output_row_group[output_group_idx];
-    BitMaskType or_result = output_row_group[output_group_idx] | bit_indicator;
+    and_result = expected & bit_indicator;
+    while (and_result != 0)
+    {
+        output_group_idx++;
+        expected = output_row_group[output_group_idx];
+        and_result = expected & bit_indicator;
+    }
+    BitMaskType or_result = expected | bit_indicator;
     BitMaskType old_value = atomicCAS(&output_row_group[output_group_idx], expected, or_result);
 
     int spilled_idx;
@@ -1071,7 +1080,8 @@ __global__ void pre_spgemm(
     // For rows that haven't been added onto the row_group
     while (expected != old_value) {
         // calculate and_result again to see if there exists overlap
-        and_result = output_row_group[output_group_idx] & bit_indicator;
+        expected = output_row_group[output_group_idx];
+        and_result = expected & bit_indicator;
         // If there exists overlap, change to next row_group until no overlap exists
         while (and_result != 0) {
             output_group_idx++;
@@ -1091,15 +1101,16 @@ __global__ void pre_spgemm(
                 dC_spilled_row_tile_idx[spilled_idx] = bid;
                 break;
             }
-            and_result = output_row_group[output_group_idx] & bit_indicator;
+            expected = output_row_group[output_group_idx];
+            and_result = expected & bit_indicator;
         }
         if (output_group_idx == -1)
         {
             break;
         }
-        expected = output_row_group[output_group_idx];
+        // expected = output_row_group[output_group_idx];
         // Now there is no overlap, try to add onto the new row_group.
-        or_result = output_row_group[output_group_idx] | bit_indicator;
+        or_result = expected | bit_indicator;
         old_value = atomicCAS(&output_row_group[output_group_idx], expected, or_result);
     }
     dC_output_group_idx[tid] = output_group_idx;
@@ -1107,6 +1118,10 @@ __global__ void pre_spgemm(
     __syncthreads();
     if (threadIdx.x == 0)
     {
+        for (int i = 0; i < OUTPUT_MAX_GROUP_NUM; i++)
+        {
+            atomicAdd(nnz, __popc(output_row_group[i]));
+        }
         // printf("bid: %d\n", bid);
         for (int i = 0; i < OUTPUT_MAX_GROUP_NUM; i++)
         {
@@ -1543,11 +1558,20 @@ __global__ void spgemm_compute_1dthread_tcore(
     __shared__ ValueType group[TILE_WIDTH][MAX_GROUP_NUM];
     __shared__ int tiled_csr_offset_smem[TILE_HEIGHT+1];
     __shared__ int tiled_csr_column_smem[MAX_TILEA_NNZ];
-    __shared__ int tiled_csr_value_smem[MAX_TILEA_NNZ];
+    __shared__ ValueType tiled_csr_value_smem[MAX_TILEA_NNZ];
 
     // intermediate buffers
     __shared__ BitMaskType group_indicator[OUTPUT_MAX_GROUP_NUM][BIT_WIDTH][MAX_GROUP_NUM];
     __shared__ OutputType result[OUTPUT_MAX_GROUP_NUM][BIT_WIDTH][TILE_WIDTH];
+
+    if (threadIdx.x < 128)
+    {
+        group[threadIdx.x/4][threadIdx.x%4] = 0;
+        for (int i = 0; i < 4; i++)
+        {
+            group_indicator[threadIdx.x/8][threadIdx.x%8][i] = 0;
+        }
+    }
 
     int row_group_id;
     int bid = blockIdx.x + blockIdx.y * gridDim.x;
@@ -1736,10 +1760,10 @@ __global__ void spgemm_compute_1dthread_tcore(
 
         __syncthreads();
 
-        // if (bid == 0 && threadIdx.x == 0 && k == 0)
-        // {
-        //     printf("group_indicator: %d\n", group_indicator[0][0][0]);
-        // }
+        if (bid == 0 && threadIdx.x == 0)
+        {
+            printf("group_indicator: %d, k: %d\n", group_indicator[0][0][0], k);
+        }
 
         // if (bid == 0 && k == 0 && threadIdx.x == 0)
         // {

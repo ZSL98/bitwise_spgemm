@@ -62,7 +62,8 @@ __global__ void generate_groups(BitMaskType *MatB_bit,
                                 // int **tile_spilled_csrColInd,
                                 // int **tile_spilled_csrRowPtr,
                                 int *spilled_row_hash_table_gmem,
-                                int *spilled_row_hash_table_reverse_gmem
+                                int *spilled_row_hash_table_reverse_gmem,
+                                int *nnz
                                 )
 {
     int bid = blockIdx.y * gridDim.x + blockIdx.x;  
@@ -97,53 +98,91 @@ __global__ void generate_groups(BitMaskType *MatB_bit,
         }
     }
 
+    int mask = MatB_bit[entry_ind_bit];
+    __syncthreads();
 
     int group_idx = 0;
-    BitMaskType and_result; //and_result is used to check if there exists overlap
-
-    BitMaskType expected = row_group[group_idx];
-    // or_result is the group mask after adding to the row_group. In this step, the first group is settled.
-    BitMaskType or_result = row_group[group_idx] | MatB_bit[entry_ind_bit];
-    // Only one row is added to the row_group
-    BitMaskType old_value = atomicCAS(&row_group[group_idx], expected, or_result);
-
-    // For rows that haven't been added onto the row_group
-    while (expected != old_value) {
-        // calculate and_result again to see if there exists overlap
-        and_result = row_group[group_idx] & MatB_bit[entry_ind_bit];
-        // If there exists overlap, change to next row_group until no overlap exists
-        while (and_result != 0) {
+    if (mask == 0)
+    {
+        group_idx = 0;
+    }
+    else
+    {
+        BitMaskType and_result; //and_result is used to check if there exists overlap
+        BitMaskType expected = row_group[group_idx];
+        and_result = expected & mask;
+        while (and_result != 0)
+        {
+            // if (bid == 0)
+            // {
+            //     printf("Collision. Move to next.\n");
+            // }
             group_idx++;
+            expected = row_group[group_idx];
+            and_result = expected & mask;
+        }
+
+        // BitMaskType expected = row_group[group_idx];
+        // or_result is the group mask after adding to the row_group. In this step, the first group is settled.
+        BitMaskType or_result = expected | mask;
+        // Only one row is added to the row_group
+        BitMaskType old_value = atomicCAS(&row_group[group_idx], expected, or_result);
+
+        // For rows that haven't been added onto the row_group
+        while (expected != old_value) {
+            // if (bid == 0)
+            // {
+            //     printf("Not stored: %d, group_idx: %d, thread: %d\n", mask, group_idx, threadIdx.x);
+            // }
+            // calculate and_result again to see if there exists overlap
+            expected = row_group[group_idx];
+            and_result = expected & mask;
+            // If there exists overlap, change to next row_group until no overlap exists
+            while (and_result != 0) {
+                // if (bid == 0)
+                // {
+                //     printf("Collision. Move to next again.\n");
+                // }
+                group_idx++;
+                if (group_idx >= MAX_GROUP_NUM)
+                {
+                    group_id[entry_ind_bit] = -1;
+                    int spilled_row_hash_key = atomicAdd(&spilled_row_cnt[bid], 1);
+                    spilled_row_hash_table_smem[spilled_row_hash_key] = threadIdx.x;
+                    for (int j = 0; j < TILE_WIDTH; j++)
+                    {
+                        if (d_dense_smem[threadIdx.x][j] != 0)
+                        {
+                            atomicAdd(&spilled_nnz[bid], 1);
+                        }
+                    }
+                    break;
+                }
+                expected = row_group[group_idx];
+                and_result = expected & mask;
+            }
             if (group_idx >= MAX_GROUP_NUM)
             {
-                group_id[entry_ind_bit] = -1;
-                int spilled_row_hash_key = atomicAdd(&spilled_row_cnt[bid], 1);
-                spilled_row_hash_table_smem[spilled_row_hash_key] = threadIdx.x;
-                for (int j = 0; j < TILE_WIDTH; j++)
-                {
-                    if (d_dense_smem[threadIdx.x][j] != 0)
-                    {
-                        atomicAdd(&spilled_nnz[bid], 1);
-                    }
-                }
                 break;
             }
-            and_result = row_group[group_idx] & MatB_bit[entry_ind_bit];
+            // expected = row_group[group_idx];
+            // Now there is no overlap, try to add onto the new row_group.
+            or_result = expected | mask;
+            old_value = atomicCAS(&row_group[group_idx], expected, or_result);
+            // printf("Bid: %d, thread: %d, group_idx: %d\n", bid, threadIdx.x, group_idx);
         }
-        if (group_idx >= MAX_GROUP_NUM)
-        {
-            break;
-        }
-        expected = row_group[group_idx];
-        // Now there is no overlap, try to add onto the new row_group.
-        or_result = row_group[group_idx] | MatB_bit[entry_ind_bit];
-        old_value = atomicCAS(&row_group[group_idx], expected, or_result);
-        group_id[entry_ind_bit] = group_idx;
-        // printf("Bid: %d, thread: %d, group_idx: %d\n", bid, threadIdx.x, group_idx);
     }
+    // row_group[group_idx] |= MatB_bit[entry_ind_bit];
+
+    group_id[entry_ind_bit] = group_idx;
+
+    // if (bid == 0)
+    // {
+    //     printf("thread: %d, group_idx: %d, bitmask: %d\n", threadIdx.x, group_idx, MatB_bit[entry_ind_bit]);
+    // }
 
     for (int i = 0; i < TILE_WIDTH; i++) {
-        if (MatB_bit[entry_ind_bit] >> (31-i) & 1) {
+        if (mask >> (31-i) & 1) {
             group_ele_row_idx[group_idx][i] = threadIdx.x;
         }
     }
@@ -152,6 +191,10 @@ __global__ void generate_groups(BitMaskType *MatB_bit,
 
     if (threadIdx.x == 0)
     {
+        for (int i = 0; i < MAX_GROUP_NUM; i++)
+        {
+            atomicAdd(nnz, __popc(row_group[i]));
+        }
         int spilled_row;
 
         for (int i = 0; i < spilled_row_cnt[bid]; i++)
@@ -176,8 +219,11 @@ __global__ void generate_groups(BitMaskType *MatB_bit,
             for (int i = 0; i < TILE_WIDTH; i++) {
                 // d_group_ele_row_ind[(MAX_GROUP_NUM * bid + group_idx) * TILE_WIDTH + i] 
                 //         = group_ele_row_idx[group_idx][i];
-                d_group_ele_row_val[(MAX_GROUP_NUM * bid + g) * TILE_WIDTH + i] 
-                        = (ValueType)d_dense_smem[group_ele_row_idx[g][i]][i];
+                if(group_ele_row_idx[g][i] >=0)
+                {
+                    d_group_ele_row_val[(MAX_GROUP_NUM * bid + g) * TILE_WIDTH + i] 
+                            = (ValueType)d_dense_smem[group_ele_row_idx[g][i]][i];
+                }
             }
         }
         // group_id[entry_ind_bit] = group_idx;
@@ -289,6 +335,11 @@ __global__ void csr2tiledcsr(
 
     int tmp_tile_nnz[(SIZE_M/TILE_HEIGHT)*(SIZE_K/SPLIT_K)];
 
+    for (int i = 0; i < (SIZE_M/TILE_HEIGHT)*(SIZE_K/SPLIT_K); i++)
+    {
+        tmp_tile_nnz[i] = 0;
+    }
+
     for (int i = 0; i < SIZE_M+1; i++)
     {
         int start_offset = dA_csr_offset[i];
@@ -332,9 +383,7 @@ template <typename BitMaskType,
           typename ValueType>
 __global__ void dense2bitmask(ValueType *MatB_dense, BitMaskType *MatB_bit)
 {
-    // int bid = blockIdx.y * gridDim.x + blockIdx.x;  
-    // int tid = bid * blockDim.x + threadIdx.x;
-
+    int bid = blockIdx.y * gridDim.x + blockIdx.x;  
     int row_ind = blockDim.x * blockIdx.y + threadIdx.x;
     int entry_ind = row_ind * gridDim.x * TILE_WIDTH + blockIdx.x * TILE_WIDTH;
     int entry_ind_bit = row_ind * gridDim.x + blockIdx.x;
@@ -354,10 +403,23 @@ __global__ void dense2bitmask(ValueType *MatB_dense, BitMaskType *MatB_bit)
         {
             if (MatB_dense[entry_ind + i] != 0)
             {
+                // if (bid == 0)
+                // {
+                //     printf("MatB_dense: %f\n", MatB_dense[entry_ind + i]);
+                // }
                 atomicOr(&MatB_bit[entry_ind_bit], (1 << (31-i)));
+                // if (bid == 0)
+                // {
+                //     printf("MatB_bit: %d, entry_ind_bit: %d, i: %d, MatB_dense: %f\n", MatB_bit[entry_ind_bit], entry_ind_bit, i, MatB_dense[entry_ind + i]);
+                // }
             }
         }
     }
+    __syncthreads();
+    // if (bid == 0)
+    // {
+    //     printf("thread: %d, entry_ind_bit: %d, bitmask: %d\n", threadIdx.x, entry_ind_bit, MatB_bit[entry_ind_bit]);
+    // }
 }
 
 int dense2CSR(int num_rows, 
@@ -751,6 +813,33 @@ int main()
 
     dense2CSR(m, k, dA_dense, dA_csr_values, dA_csr_offsets, dA_csr_columns, nnzA);
 
+    int *hA_csr_offsets = (int*)malloc(sizeof(int) * (m + 1));
+    int *hA_csr_columns = (int*)malloc(sizeof(int) * nnzA);
+    float *hA_csr_values = (float*)malloc(sizeof(float) * nnzA);
+    cudaMemcpy(hA_csr_offsets, dA_csr_offsets, sizeof(int) * (m + 1), cudaMemcpyDeviceToHost);
+    cudaMemcpy(hA_csr_columns, dA_csr_columns, sizeof(int) * nnzA, cudaMemcpyDeviceToHost);
+    cudaMemcpy(hA_csr_values, dA_csr_values, sizeof(float) * nnzA, cudaMemcpyDeviceToHost);
+
+    std::cout << "nnzA: " << nnzA << std::endl;
+    for (int i = 0; i < m+1; i++)
+    {
+        std::cout << hA_csr_offsets[i] << " ";
+    }
+    std::cout << std::endl;
+
+
+    for (int i = 0; i < nnzA; i++)
+    {
+        std::cout << hA_csr_columns[i] << " ";
+    }
+    std::cout << std::endl;
+
+    for (int i = 0; i < nnzA; i++)
+    {
+        std::cout << hA_csr_values[i] << " ";
+    }
+    std::cout << std::endl;
+
     printf("Transform CSR to tiled CSR\n");
     int tileA_cnt = (SIZE_M/TILE_HEIGHT)*(SIZE_K/SPLIT_K);
     int *dA_tiled_csr_offset, *dA_tiled_csr_column;
@@ -776,8 +865,47 @@ int main()
                             dA_tile_row_nnz
                             );
 
+    int *hA_tiled_csr_offset = (int*)malloc(sizeof(int) * tileA_cnt * (TILE_HEIGHT+1));
+    int *hA_tiled_csr_column = (int*)malloc(sizeof(int) * nnzA);
+    ValueType *hA_tiled_csr_value = (ValueType*)malloc(sizeof(ValueType) * nnzA);
+    cudaMemcpy(hA_tiled_csr_offset, dA_tiled_csr_offset, sizeof(int) * tileA_cnt * (TILE_HEIGHT+1), cudaMemcpyDeviceToHost);
+    cudaMemcpy(hA_tiled_csr_column, dA_tiled_csr_column, sizeof(int) * nnzA, cudaMemcpyDeviceToHost);
+    cudaMemcpy(hA_tiled_csr_value, dA_tiled_csr_value, sizeof(ValueType) * nnzA, cudaMemcpyDeviceToHost);
+
+    for (int i = 0; i < tileA_cnt * (TILE_HEIGHT+1); i++)
+    {
+        std::cout << hA_tiled_csr_offset[i] << " ";
+    }
+    std::cout << std::endl;
+
+
+    for (int i = 0; i < nnzA; i++)
+    {
+        std::cout << hA_tiled_csr_column[i] << " ";
+    }
+    std::cout << std::endl;
+
+    for (int i = 0; i < nnzA; i++)
+    {
+        std::cout << (int)hA_tiled_csr_value[i] << " ";
+    }
+    std::cout << std::endl;
+
     int64_t nnzB;
     dense2CSR(k, n, dB_dense, dB_csr_values, dB_csr_offsets, dB_csr_columns, nnzB);
+
+    std::cout << "nnzB: " << nnzB << std::endl;
+
+    int *hB_csr_offsets = (int*)malloc(sizeof(int) * (k + 1));
+    int *hB_csr_columns = (int*)malloc(sizeof(int) * nnzB);
+    float *hB_csr_values = (float*)malloc(sizeof(float) * nnzB);
+    cudaMemcpy(hB_csr_offsets, dB_csr_offsets, sizeof(int) * (k + 1), cudaMemcpyDeviceToHost);
+    cudaMemcpy(hB_csr_columns, dB_csr_columns, sizeof(int) * nnzB, cudaMemcpyDeviceToHost);
+    cudaMemcpy(hB_csr_values, dB_csr_values, sizeof(float) * nnzB, cudaMemcpyDeviceToHost);
+
+    int *dB_nnz;
+    CHECK_CUDA( cudaMalloc((void**) &dB_nnz, sizeof(int) * 1) )
+    int *hB_nnz = (int*)malloc(sizeof(int));
 
     printf("\nMatrix B generate groups...\n");
     generate_groups<<<grid1, block1>>>(dB_bitmask,                            // input
@@ -792,17 +920,22 @@ int main()
                                     //  dB_tile_spilled_csrColInd,             // output
                                     //  dB_tile_spilled_csrRowPtr,             // output
                                      dB_spilled_row_hash_table_gmem,
-                                     dB_spilled_row_hash_table_reverse_gmem // output
+                                     dB_spilled_row_hash_table_reverse_gmem,   // output
+                                     dB_nnz
                                      );
+
+    cudaMemcpy(hB_nnz, dB_nnz, sizeof(int), cudaMemcpyDeviceToHost);
+    std::cout << "nnz of B in groups: " << *hB_nnz << std::endl; 
 
     ValueType *hB_group_ele_val = (ValueType *)malloc(k * n / SPLIT_K * MAX_GROUP_NUM * sizeof(ValueType));
     cudaMemcpy(hB_group_ele_val, dB_group_ele_val, k * n / SPLIT_K * MAX_GROUP_NUM * sizeof(ValueType), cudaMemcpyDeviceToHost);
     printf("dB_group_value\n");
-    printMatrix(4, 32, hB_group_ele_val, "group");
+    printMatrix(32, 32, hB_group_ele_val, "group");
 
     int *hB_groupmask = (int*)malloc(tileB_cnt * MAX_GROUP_NUM * sizeof(int));
     cudaMemcpy(hB_groupmask, dB_groupmask, tileB_cnt * MAX_GROUP_NUM * sizeof(int), cudaMemcpyDeviceToHost);
-    printintMatrix_32(16, hB_groupmask, "B_groupmask");
+    printf("B_groupmask\n");
+    printintMatrix_32(32, hB_groupmask, "B_groupmask");
     
 
     int *hB_spilled_nnz = (int*)malloc(tileB_cnt * sizeof(int));
@@ -895,6 +1028,10 @@ int main()
 
     // spgemm
 
+    int *dC_nnz;
+    CHECK_CUDA( cudaMalloc((void**) &dC_nnz, sizeof(int) * 1) )
+    int *hC_nnz = (int*)malloc(sizeof(int));
+
     cudaEventRecord(start);
     dim3 grid_2d(SIZE_N/TILE_WIDTH, SIZE_M/TILE_HEIGHT, 1), block_1d(TILE_HEIGHT, 1, 1);
     pre_spgemm<<<grid_2d, block_1d>>>(dB_bitmask, 
@@ -911,8 +1048,12 @@ int main()
                                       dC_spilled_row_cnt_offset,
                                       dC_spilled_nnz_offset,
                                       dC_spilled_row_buffersize,
-                                      dC_spilled_nnz_buffersize
+                                      dC_spilled_nnz_buffersize,
+                                      dC_nnz
                                       );
+
+    cudaMemcpy(hC_nnz, dC_nnz, sizeof(int), cudaMemcpyDeviceToHost);
+    std::cout << "nnz of C in groups: " << *hC_nnz << std::endl; 
 
     int* hC_output_group_idx = (int*) malloc(SIZE_M * SIZE_N / TILE_WIDTH * sizeof(int));
     cudaMemcpy(hC_output_group_idx, dC_output_group_idx, SIZE_M * SIZE_N / TILE_WIDTH * sizeof(int), cudaMemcpyDeviceToHost);
@@ -1031,6 +1172,7 @@ int main()
     // cudaMemcpy(hC_dense, dC_dense, SIZE_M * SIZE_N * sizeof(OutputType), cudaMemcpyDeviceToHost);
     
     printMatrixTile(32, 32, SIZE_K, hA_dense, "hA_dense");
+    // printMatrixTile(256, 32, SIZE_K, hB_dense, "hB_dense");
     // printMatrixTile(32, 32, SIZE_N, hC_dense, "BitSparse result");
 
     cudaError_t err = cudaGetLastError();
@@ -1227,20 +1369,6 @@ int main()
 	SMatrix *matrixA = (SMatrix *)malloc(sizeof(SMatrix));
 	SMatrix *matrixB = (SMatrix *)malloc(sizeof(SMatrix));
 
-    int *hA_csr_offsets = (int*)malloc(sizeof(int) * (m + 1));
-    int *hA_csr_columns = (int*)malloc(sizeof(int) * nnzA);
-    float *hA_csr_values = (float*)malloc(sizeof(float) * nnzA);
-    cudaMemcpy(hA_csr_offsets, dA_csr_offsets, sizeof(int) * (m + 1), cudaMemcpyDeviceToHost);
-    cudaMemcpy(hA_csr_columns, dA_csr_columns, sizeof(int) * nnzA, cudaMemcpyDeviceToHost);
-    cudaMemcpy(hA_csr_values, dA_csr_values, sizeof(float) * nnzA, cudaMemcpyDeviceToHost);
-
-    int *hB_csr_offsets = (int*)malloc(sizeof(int) * (k + 1));
-    int *hB_csr_columns = (int*)malloc(sizeof(int) * nnzB);
-    float *hB_csr_values = (float*)malloc(sizeof(float) * nnzB);
-    cudaMemcpy(hB_csr_offsets, dB_csr_offsets, sizeof(int) * (k + 1), cudaMemcpyDeviceToHost);
-    cudaMemcpy(hB_csr_columns, dB_csr_columns, sizeof(int) * nnzB, cudaMemcpyDeviceToHost);
-    cudaMemcpy(hB_csr_values, dB_csr_values, sizeof(float) * nnzB, cudaMemcpyDeviceToHost);
-
     initialize_SMatrix(matrixA, SIZE_M, SIZE_K, nnzA, hA_csr_offsets, hA_csr_columns, hA_csr_values);
     initialize_SMatrix(matrixB, SIZE_K, SIZE_N, nnzB, hB_csr_offsets, hB_csr_columns, hB_csr_values);
 
@@ -1332,7 +1460,7 @@ int main()
     printf("tSparse elpased time:     %fms\n", tsparse_ms);
     printf("TileSpGEMM elpased time:  %fms\n", tilespgemm_time);
 
-    printf("\nC_sparsity: %f\n", 1.0 - float(C_nnz1)/SIZE_M/SIZE_N);
+    printf("\nC_sparsity: %f, nnz_C: %d\n", 1.0 - float(C_nnz1)/SIZE_M/SIZE_N, C_nnz1);
     
     // print MatA's information
     if (PRINT_MAT_A_INFO)
