@@ -1003,7 +1003,7 @@ int main()
     BitMaskType *dC_groupmask;
     int *dC_spilled_row_cnt, *dC_spilled_nnz, *dC_output_group_idx;
     int *dC_spilled_row_row_idx, *dC_spilled_row_tile_idx;
-    CHECK_CUDA( cudaMalloc((void**) &dC_group_value,  tileC_cnt * OUTPUT_MAX_GROUP_NUM * TILE_WIDTH * sizeof(float)) )
+    CHECK_CUDA( cudaMalloc((void**) &dC_group_value,  tileC_cnt * (OUTPUT_MAX_GROUP_NUM*4) * TILE_WIDTH * sizeof(float)) )
     CHECK_CUDA( cudaMalloc((void**) &dC_bitmask,  SIZE_M * SIZE_N / TILE_WIDTH * sizeof(int)) )
     CHECK_CUDA( cudaMalloc((void**) &dC_groupmask,  tileC_cnt * OUTPUT_MAX_GROUP_NUM * sizeof(BitMaskType)) )
     // CHECK_CUDA( cudaMalloc((void**) &dC_groupmask,  SIZE_M * SIZE_N / TILE_WIDTH * sizeof(BitMaskType)) )
@@ -1160,8 +1160,8 @@ int main()
     printf("group_indicator\n");
     printMatrix(32, 32, h_probe, "group_indicator");
 
-    float* hC_group_value = (float *)malloc(tileC_cnt * TILE_WIDTH * OUTPUT_MAX_GROUP_NUM * sizeof(float));
-    cudaMemcpy(hC_group_value, dC_group_value, tileC_cnt * TILE_WIDTH * OUTPUT_MAX_GROUP_NUM * sizeof(float), cudaMemcpyDeviceToHost);
+    float* hC_group_value = (float *)malloc(tileC_cnt * TILE_WIDTH * (OUTPUT_MAX_GROUP_NUM*4) * sizeof(float));
+    cudaMemcpy(hC_group_value, dC_group_value, tileC_cnt * TILE_WIDTH * (OUTPUT_MAX_GROUP_NUM*4) * sizeof(float), cudaMemcpyDeviceToHost);
     printf("group_value\n");
     printMatrix(16, 32, hC_group_value, "hC_group_value", 6);
 
@@ -1171,7 +1171,7 @@ int main()
     // group2dense<<<grid_2d, block_1d>>>(dC_group_value, dC_dense, dC_output_group_idx, dC_bitmask);
     // cudaMemcpy(hC_dense, dC_dense, SIZE_M * SIZE_N * sizeof(OutputType), cudaMemcpyDeviceToHost);
     
-    printMatrixTile(32, 32, SIZE_K, hA_dense, "hA_dense");
+    // printMatrixTile(32, 32, SIZE_K, hA_dense, "hA_dense");
     // printMatrixTile(256, 32, SIZE_K, hB_dense, "hB_dense");
     // printMatrixTile(32, 32, SIZE_N, hC_dense, "BitSparse result");
 
@@ -1322,7 +1322,7 @@ int main()
     // device result check
     CHECK_CUDA( cudaMemcpy(hC_dense_float, dC_dense_float, SIZE_M * SIZE_N * sizeof(float), cudaMemcpyDeviceToHost) )
 
-    printMatrixTile(32, 32, SIZE_N, hC_dense_float, "Mat C ground truth (tile)");
+    // printMatrixTile(32, 32, SIZE_N, hC_dense_float, "Mat C ground truth (tile)");
 
     float *dC_group_float;
     CHECK_CUDA( cudaMalloc((void**) &dC_group_float,  tileC_cnt * OUTPUT_MAX_GROUP_NUM * TILE_WIDTH * sizeof(float)) )

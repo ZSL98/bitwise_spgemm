@@ -23,7 +23,7 @@ using namespace nvcuda;
 #define TILE_HEIGHT 256
 #define TILE_WIDTH 32
 #define SIZE_M 256
-#define SIZE_K 256
+#define SIZE_K 512
 #define SIZE_N 256
 #define SPLIT_K 256
 

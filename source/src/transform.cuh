@@ -1848,20 +1848,25 @@ __global__ void spgemm_compute_1dthread_tcore(
     //     nvcuda::wmma::fill_fragment(B_frag[i], i);
     // }
 
-    if (bid == 0)
-    {
-        for (int i = 0; i < 1; i++)
-        {
-            // Perform the matrix multiplication
-            nvcuda::wmma::mma_sync(C_frag[i], A_frag, B_frag[i], C_frag[i]);
+    nvcuda::wmma::mma_sync(C_frag[warp_id], A_frag, B_frag[warp_id], C_frag[warp_id]);
 
-            // Store the output
-            // nvcuda::wmma::store_matrix_sync(dC_group_value, C_frag[i], 32, wmma::mem_row_major);
-            nvcuda::wmma::store_matrix_sync(dC_group_value + bid*OUTPUT_MAX_GROUP_NUM*TILE_WIDTH + 8*32*i, C_frag[i], 32, wmma::mem_row_major);
+    // Store the output
+    nvcuda::wmma::store_matrix_sync(dC_group_value + bid*(OUTPUT_MAX_GROUP_NUM*4)*TILE_WIDTH + 8*32*warp_id, C_frag[warp_id], 32, wmma::mem_row_major);
 
-            // __syncthreads();
-        }
-    }
+    // if (bid == 0)
+    // {
+        // for (int i = 1; i < 8; i++)
+        // {
+        //     // Perform the matrix multiplication
+        //     nvcuda::wmma::mma_sync(C_frag[i], A_frag, B_frag[i], C_frag[i]);
+
+        //     // Store the output
+        //     // nvcuda::wmma::store_matrix_sync(dC_group_value, C_frag[i], 32, wmma::mem_row_major);
+        //     nvcuda::wmma::store_matrix_sync(dC_group_value + bid*(OUTPUT_MAX_GROUP_NUM+6)*TILE_WIDTH + 2*32*i, C_frag[i], 32, wmma::mem_row_major);
+
+        //     __syncthreads();
+        // }
+    // }
 
 
 }
