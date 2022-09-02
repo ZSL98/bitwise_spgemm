@@ -22,9 +22,9 @@ using namespace nvcuda;
 #define OUTPUT_MAX_GROUP_NUM 16
 #define TILE_HEIGHT 256
 #define TILE_WIDTH 32
-#define SIZE_M 256
-#define SIZE_K 512
-#define SIZE_N 256
+#define SIZE_M 1024
+#define SIZE_K 1024
+#define SIZE_N 1024
 #define SPLIT_K 256
 
 #define MAX_TILEA_NNZ 2048

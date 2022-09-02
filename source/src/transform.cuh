@@ -1547,8 +1547,8 @@ __global__ void spgemm_compute_1dthread_tcore(
 
                 int *dC_output_group_idx,
                 OutputType *dC_group_value,
-                half *multiplicand,
-                ValueType *d_probe
+                half *multiplicand
+                // ValueType *d_probe
             )
 {
     // input buffers
@@ -1564,14 +1564,14 @@ __global__ void spgemm_compute_1dthread_tcore(
     __shared__ BitMaskType group_indicator[OUTPUT_MAX_GROUP_NUM][BIT_WIDTH][MAX_GROUP_NUM];
     __shared__ OutputType result[OUTPUT_MAX_GROUP_NUM][BIT_WIDTH][TILE_WIDTH];
 
-    if (threadIdx.x < 128)
-    {
-        group[threadIdx.x/4][threadIdx.x%4] = 0;
-        for (int i = 0; i < 4; i++)
-        {
-            group_indicator[threadIdx.x/8][threadIdx.x%8][i] = 0;
-        }
-    }
+    // if (threadIdx.x < 128)
+    // {
+    //     group[threadIdx.x/4][threadIdx.x%4] = 0;
+    //     for (int i = 0; i < 4; i++)
+    //     {
+    //         group_indicator[threadIdx.x/8][threadIdx.x%8][i] = 0;
+    //     }
+    // }
 
     int row_group_id;
     int bid = blockIdx.x + blockIdx.y * gridDim.x;
@@ -1671,17 +1671,17 @@ __global__ void spgemm_compute_1dthread_tcore(
         __syncthreads();
 
         // signed char tmp = tiled_csr_value_smem[0] >> 1;
-        if (bid == 0 && threadIdx.x == 0 && k == 0)
-        {
-            printf("smem_value: %d\n", tiled_csr_value_smem[0]);
-            printf("smem_column: %d\n", tiled_csr_column_smem[0]);
-            // printf("row_group_id: %d\n", group_id_smem[tiled_csr_column_smem[1]]);
-            // printf("MatB_bit_smem: %d\n", MatB_bit_smem[tiled_csr_column_smem[1]]);
-            printf("smem_offset: %d\n", tiled_csr_offset_smem[1]);
-            printf("gmem_value: %d\n", dA_tiled_csr_value_gmem[0]);
-            printf("tile_nnz_acc_0: %d\n", dA_tile_nnz_acc[tileA_id]);
-            printf("output_group_idx: %d\n", output_group_idx);
-        }
+        // if (bid == 0 && threadIdx.x == 0 && k == 0)
+        // {
+        //     printf("smem_value: %d\n", tiled_csr_value_smem[0]);
+        //     printf("smem_column: %d\n", tiled_csr_column_smem[0]);
+        //     // printf("row_group_id: %d\n", group_id_smem[tiled_csr_column_smem[1]]);
+        //     // printf("MatB_bit_smem: %d\n", MatB_bit_smem[tiled_csr_column_smem[1]]);
+        //     printf("smem_offset: %d\n", tiled_csr_offset_smem[1]);
+        //     printf("gmem_value: %d\n", dA_tiled_csr_value_gmem[0]);
+        //     printf("tile_nnz_acc_0: %d\n", dA_tile_nnz_acc[tileA_id]);
+        //     printf("output_group_idx: %d\n", output_group_idx);
+        // }
 
         for (int z = tiled_csr_offset_smem[threadIdx.x]; z < tiled_csr_offset_smem[threadIdx.x+1]; z++)
         {
@@ -1760,10 +1760,10 @@ __global__ void spgemm_compute_1dthread_tcore(
 
         __syncthreads();
 
-        if (bid == 0 && threadIdx.x == 0)
-        {
-            printf("group_indicator: %d, k: %d\n", group_indicator[0][0][0], k);
-        }
+        // if (bid == 0 && threadIdx.x == 0)
+        // {
+        //     printf("group_indicator: %d, k: %d\n", group_indicator[0][0][0], k);
+        // }
 
         // if (bid == 0 && k == 0 && threadIdx.x == 0)
         // {
@@ -1795,28 +1795,27 @@ __global__ void spgemm_compute_1dthread_tcore(
 
         __syncthreads();
 
-        if (bid == 0 && threadIdx.x == 0)
-        {
-        for (int r = 0; r < 16; r++)
-        {
-            for (int s = 0; s < 8; s++)
-            {
-                for (int t = 0; t < 4; t++)
-                {
-                    for (int p = 0; p < 32; p++)
-                    {
-                        if (group_indicator[r][s][t] >> (31-p) & 0x01)
-                        {
-                            d_probe[(r*8 + s)*32+p] += group[p][t];
-                        }
-                    }
-                }
-            }
-        }
-        }
-        // printf("Stop it. Get some help: %d\n", d_probe[258]);
+        // if (bid == 0 && threadIdx.x == 0)
+        // {
+        // for (int r = 0; r < 16; r++)
+        // {
+        //     for (int s = 0; s < 8; s++)
+        //     {
+        //         for (int t = 0; t < 4; t++)
+        //         {
+        //             for (int p = 0; p < 32; p++)
+        //             {
+        //                 if (group_indicator[r][s][t] >> (31-p) & 0x01)
+        //                 {
+        //                     d_probe[(r*8 + s)*32+p] += group[p][t];
+        //                 }
+        //             }
+        //         }
+        //     }
+        // }
+        // }
 
-        __syncthreads();
+        // __syncthreads();
 
     }
 

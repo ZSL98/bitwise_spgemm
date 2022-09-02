@@ -735,7 +735,7 @@ void initialize_SMatrix(SMatrix *&matrix, int row_size, int col_size, int64_t nn
 
 }
 
-int main() 
+int main(int argc, char ** argv) 
 {
     // using IndexType = int;
     // using ValueType = float;
@@ -820,25 +820,25 @@ int main()
     cudaMemcpy(hA_csr_columns, dA_csr_columns, sizeof(int) * nnzA, cudaMemcpyDeviceToHost);
     cudaMemcpy(hA_csr_values, dA_csr_values, sizeof(float) * nnzA, cudaMemcpyDeviceToHost);
 
-    std::cout << "nnzA: " << nnzA << std::endl;
-    for (int i = 0; i < m+1; i++)
-    {
-        std::cout << hA_csr_offsets[i] << " ";
-    }
-    std::cout << std::endl;
+    // std::cout << "nnzA: " << nnzA << std::endl;
+    // for (int i = 0; i < m+1; i++)
+    // {
+    //     std::cout << hA_csr_offsets[i] << " ";
+    // }
+    // std::cout << std::endl;
 
 
-    for (int i = 0; i < nnzA; i++)
-    {
-        std::cout << hA_csr_columns[i] << " ";
-    }
-    std::cout << std::endl;
+    // for (int i = 0; i < nnzA; i++)
+    // {
+    //     std::cout << hA_csr_columns[i] << " ";
+    // }
+    // std::cout << std::endl;
 
-    for (int i = 0; i < nnzA; i++)
-    {
-        std::cout << hA_csr_values[i] << " ";
-    }
-    std::cout << std::endl;
+    // for (int i = 0; i < nnzA; i++)
+    // {
+    //     std::cout << hA_csr_values[i] << " ";
+    // }
+    // std::cout << std::endl;
 
     printf("Transform CSR to tiled CSR\n");
     int tileA_cnt = (SIZE_M/TILE_HEIGHT)*(SIZE_K/SPLIT_K);
@@ -872,24 +872,24 @@ int main()
     cudaMemcpy(hA_tiled_csr_column, dA_tiled_csr_column, sizeof(int) * nnzA, cudaMemcpyDeviceToHost);
     cudaMemcpy(hA_tiled_csr_value, dA_tiled_csr_value, sizeof(ValueType) * nnzA, cudaMemcpyDeviceToHost);
 
-    for (int i = 0; i < tileA_cnt * (TILE_HEIGHT+1); i++)
-    {
-        std::cout << hA_tiled_csr_offset[i] << " ";
-    }
-    std::cout << std::endl;
+    // for (int i = 0; i < tileA_cnt * (TILE_HEIGHT+1); i++)
+    // {
+    //     std::cout << hA_tiled_csr_offset[i] << " ";
+    // }
+    // std::cout << std::endl;
 
 
-    for (int i = 0; i < nnzA; i++)
-    {
-        std::cout << hA_tiled_csr_column[i] << " ";
-    }
-    std::cout << std::endl;
+    // for (int i = 0; i < nnzA; i++)
+    // {
+    //     std::cout << hA_tiled_csr_column[i] << " ";
+    // }
+    // std::cout << std::endl;
 
-    for (int i = 0; i < nnzA; i++)
-    {
-        std::cout << (int)hA_tiled_csr_value[i] << " ";
-    }
-    std::cout << std::endl;
+    // for (int i = 0; i < nnzA; i++)
+    // {
+    //     std::cout << (int)hA_tiled_csr_value[i] << " ";
+    // }
+    // std::cout << std::endl;
 
     int64_t nnzB;
     dense2CSR(k, n, dB_dense, dB_csr_values, dB_csr_offsets, dB_csr_columns, nnzB);
@@ -1052,36 +1052,36 @@ int main()
                                       dC_nnz
                                       );
 
-    cudaMemcpy(hC_nnz, dC_nnz, sizeof(int), cudaMemcpyDeviceToHost);
-    std::cout << "nnz of C in groups: " << *hC_nnz << std::endl; 
+    // cudaMemcpy(hC_nnz, dC_nnz, sizeof(int), cudaMemcpyDeviceToHost);
+    // std::cout << "nnz of C in groups: " << *hC_nnz << std::endl; 
 
-    int* hC_output_group_idx = (int*) malloc(SIZE_M * SIZE_N / TILE_WIDTH * sizeof(int));
-    cudaMemcpy(hC_output_group_idx, dC_output_group_idx, SIZE_M * SIZE_N / TILE_WIDTH * sizeof(int), cudaMemcpyDeviceToHost);
-    printf("\n hC_output_group_idx: %d\n", hC_output_group_idx[0]);
-    printMatrix(16, 16, hC_output_group_idx, "hC_output_group_idx");
+    // int* hC_output_group_idx = (int*) malloc(SIZE_M * SIZE_N / TILE_WIDTH * sizeof(int));
+    // cudaMemcpy(hC_output_group_idx, dC_output_group_idx, SIZE_M * SIZE_N / TILE_WIDTH * sizeof(int), cudaMemcpyDeviceToHost);
+    // printf("\n hC_output_group_idx: %d\n", hC_output_group_idx[0]);
+    // printMatrix(16, 16, hC_output_group_idx, "hC_output_group_idx");
 
-    BitMaskType* hC_groupmask = (BitMaskType*)malloc(tileC_cnt * OUTPUT_MAX_GROUP_NUM * sizeof(BitMaskType));
-    cudaMemcpy(hC_groupmask, dC_groupmask, tileC_cnt * OUTPUT_MAX_GROUP_NUM * sizeof(BitMaskType), cudaMemcpyDeviceToHost);
-    printf("\n hC_groupmask: %d\n", hC_groupmask[0]);
-    printintMatrix_32(16, hC_groupmask, "hC_groupmask");
+    // BitMaskType* hC_groupmask = (BitMaskType*)malloc(tileC_cnt * OUTPUT_MAX_GROUP_NUM * sizeof(BitMaskType));
+    // cudaMemcpy(hC_groupmask, dC_groupmask, tileC_cnt * OUTPUT_MAX_GROUP_NUM * sizeof(BitMaskType), cudaMemcpyDeviceToHost);
+    // printf("\n hC_groupmask: %d\n", hC_groupmask[0]);
+    // printintMatrix_32(16, hC_groupmask, "hC_groupmask");
 
-    int* hC_bitmask = (int*)malloc(SIZE_M * SIZE_N / TILE_WIDTH * sizeof(int));
-    cudaMemcpy(hC_bitmask, dC_bitmask, SIZE_M * SIZE_N / TILE_WIDTH * sizeof(int), cudaMemcpyDeviceToHost);
-    printf("\n hC_bitmask: %d\n", hC_bitmask[4]);
-    printintMatrix_32(16, hC_bitmask, "hC_bitmask");
+    // int* hC_bitmask = (int*)malloc(SIZE_M * SIZE_N / TILE_WIDTH * sizeof(int));
+    // cudaMemcpy(hC_bitmask, dC_bitmask, SIZE_M * SIZE_N / TILE_WIDTH * sizeof(int), cudaMemcpyDeviceToHost);
+    // printf("\n hC_bitmask: %d\n", hC_bitmask[4]);
+    // printintMatrix_32(16, hC_bitmask, "hC_bitmask");
 
     // printf("pre_spgemm success!\n");
-    int *hC_spilled_row_buffersize = (int*)malloc(sizeof(int));
-    int *hC_spilled_nnz_buffersize = (int*)malloc(sizeof(int));
-    cudaMemcpy(hC_spilled_row_buffersize, dC_spilled_row_buffersize, sizeof(int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(hC_spilled_nnz_buffersize, dC_spilled_nnz_buffersize, sizeof(int), cudaMemcpyDeviceToHost);
+    // int *hC_spilled_row_buffersize = (int*)malloc(sizeof(int));
+    // int *hC_spilled_nnz_buffersize = (int*)malloc(sizeof(int));
+    // cudaMemcpy(hC_spilled_row_buffersize, dC_spilled_row_buffersize, sizeof(int), cudaMemcpyDeviceToHost);
+    // cudaMemcpy(hC_spilled_nnz_buffersize, dC_spilled_nnz_buffersize, sizeof(int), cudaMemcpyDeviceToHost);
 
 
-    int *dC_tile_spilled_csrRowPtr, *dC_tile_spilled_csrColInd;
-    float *dC_tile_spilled_csrVal;
-    CHECK_CUDA( cudaMalloc((void**) &dC_tile_spilled_csrRowPtr,  *hC_spilled_row_buffersize * sizeof(int)) )
-    CHECK_CUDA( cudaMalloc((void**) &dC_tile_spilled_csrColInd,  *hC_spilled_nnz_buffersize * sizeof(int)) )
-    CHECK_CUDA( cudaMalloc((void**) &dC_tile_spilled_csrVal,     *hC_spilled_nnz_buffersize * sizeof(float)) )
+    // int *dC_tile_spilled_csrRowPtr, *dC_tile_spilled_csrColInd;
+    // float *dC_tile_spilled_csrVal;
+    // CHECK_CUDA( cudaMalloc((void**) &dC_tile_spilled_csrRowPtr,  *hC_spilled_row_buffersize * sizeof(int)) )
+    // CHECK_CUDA( cudaMalloc((void**) &dC_tile_spilled_csrColInd,  *hC_spilled_nnz_buffersize * sizeof(int)) )
+    // CHECK_CUDA( cudaMalloc((void**) &dC_tile_spilled_csrVal,     *hC_spilled_nnz_buffersize * sizeof(float)) )
 
     // if (*hC_spilled_row_buffersize != 0)
     // {
@@ -1150,24 +1150,19 @@ int main()
 
                                                 dC_output_group_idx,
                                                 dC_group_value,
-                                                d_multiplicand,
-                                                d_probe
+                                                d_multiplicand
+                                                // d_probe
                                                 );
 
 
-    ValueType *h_probe = (ValueType *)malloc(16 * 8 * 32 * sizeof(ValueType));
-    cudaMemcpy(h_probe, d_probe, 16 * 8 * 32 * sizeof(ValueType), cudaMemcpyDeviceToHost);
-    printf("group_indicator\n");
-    printMatrix(32, 32, h_probe, "group_indicator");
+    // ValueType *h_probe = (ValueType *)malloc(16 * 8 * 32 * sizeof(ValueType));
+    // cudaMemcpy(h_probe, d_probe, 16 * 8 * 32 * sizeof(ValueType), cudaMemcpyDeviceToHost);
+    // printf("group_indicator\n");
+    // printMatrix(32, 32, h_probe, "group_indicator");
 
-    float* hC_group_value = (float *)malloc(tileC_cnt * TILE_WIDTH * (OUTPUT_MAX_GROUP_NUM*4) * sizeof(float));
-    cudaMemcpy(hC_group_value, dC_group_value, tileC_cnt * TILE_WIDTH * (OUTPUT_MAX_GROUP_NUM*4) * sizeof(float), cudaMemcpyDeviceToHost);
-    printf("group_value\n");
-    printMatrix(16, 32, hC_group_value, "hC_group_value", 6);
-
-    OutputType* hC_dense = (OutputType*)malloc(sizeof(OutputType)*m*n);
-    OutputType* dC_dense;
-    CHECK_CUDA( cudaMalloc((void**) &dC_dense, m * n * sizeof(OutputType)) )
+    // OutputType* hC_dense = (OutputType*)malloc(sizeof(OutputType)*m*n);
+    // OutputType* dC_dense;
+    // CHECK_CUDA( cudaMalloc((void**) &dC_dense, m * n * sizeof(OutputType)) )
     // group2dense<<<grid_2d, block_1d>>>(dC_group_value, dC_dense, dC_output_group_idx, dC_bitmask);
     // cudaMemcpy(hC_dense, dC_dense, SIZE_M * SIZE_N * sizeof(OutputType), cudaMemcpyDeviceToHost);
     
@@ -1185,6 +1180,11 @@ int main()
     cudaEventRecord(end);
     cudaEventSynchronize(end);
 
+    float* hC_group_value = (float *)malloc(tileC_cnt * TILE_WIDTH * (OUTPUT_MAX_GROUP_NUM*4) * sizeof(float));
+    cudaMemcpy(hC_group_value, dC_group_value, tileC_cnt * TILE_WIDTH * (OUTPUT_MAX_GROUP_NUM*4) * sizeof(float), cudaMemcpyDeviceToHost);
+    printf("group_value\n");
+    printMatrix(16, 32, hC_group_value, "hC_group_value", 6);
+
     float ms;
     cudaEventElapsedTime(&ms, start, end);
     cudaEventDestroy(start);
@@ -1195,7 +1195,7 @@ int main()
     cudaMemcpy(hC_spilled_row_cnt, dC_spilled_row_cnt, tileC_cnt * sizeof(int), cudaMemcpyDeviceToHost);
     cudaMemcpy(hC_spilled_nnz, dC_spilled_nnz, tileC_cnt * sizeof(int), cudaMemcpyDeviceToHost);
 
-    printf("hC_spilled_row_cnt: %d\n\n", *hC_spilled_row_buffersize);
+    // printf("hC_spilled_row_cnt: %d\n\n", *hC_spilled_row_buffersize);
 
     // for (int i = 0; i < tileC_cnt; i++)
     // {
