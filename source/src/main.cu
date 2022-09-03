@@ -1,5 +1,6 @@
 #include <cuda_runtime_api.h>
 #include <cusparse.h>
+#include <cusparseLt.h>
 
 #include "common.h"
 #include "transform.cuh"
@@ -735,6 +736,413 @@ void initialize_SMatrix(SMatrix *&matrix, int row_size, int col_size, int64_t nn
 
 }
 
+float timing_cusparse_spgemm(int64_t &nnzA, int64_t &nnzB, int64_t &nnzC,
+                             int *&dA_csr_offsets, 
+                             int *&dA_csr_columns, 
+                             float *&dA_csr_values,
+
+                             int *&dB_csr_offsets, 
+                             int *&dB_csr_columns, 
+                             float *&dB_csr_values,
+
+                             int   *&dC_csrOffsets, 
+                             int *&dC_columns,
+                             float *&dC_values
+                             )
+{
+    cudaEvent_t start, end;
+    cudaEventCreate(&start);
+    cudaEventCreate(&end);
+
+    cusparseSpMatDescr_t matA, matB, matC;
+    void*  dBuffer1    = NULL, *dBuffer2   = NULL;
+    size_t bufferSize1 = 0,    bufferSize2 = 0;
+    CHECK_CUSPARSE( cusparseCreateCsr(&matA, SIZE_M, SIZE_K, nnzA,
+                                      dA_csr_offsets, dA_csr_columns, dA_csr_values,
+                                      CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
+                                      CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) )
+    CHECK_CUSPARSE( cusparseCreateCsr(&matB, SIZE_K, SIZE_N, nnzB,
+                                      dB_csr_offsets, dB_csr_columns, dB_csr_values,
+                                      CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
+                                      CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) )
+    CHECK_CUSPARSE( cusparseCreateCsr(&matC, SIZE_M, SIZE_N, 0,
+                                      NULL, NULL, NULL,
+                                      CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
+                                      CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) )
+
+    float               alpha       = 1.0f;
+    float               beta        = 0.0f;
+    cusparseOperation_t opA         = CUSPARSE_OPERATION_NON_TRANSPOSE;
+    cusparseOperation_t opB         = CUSPARSE_OPERATION_NON_TRANSPOSE;
+    cudaDataType        computeType = CUDA_R_32F;
+    //--------------------------------------------------------------------------
+    // SpGEMM Computation
+    cusparseHandle_t     handle = NULL;
+    CHECK_CUSPARSE( cusparseCreate(&handle) )
+
+    cudaEventRecord(start);
+    cusparseSpGEMMDescr_t spgemmDesc;
+    CHECK_CUSPARSE( cusparseSpGEMM_createDescr(&spgemmDesc) )
+
+    // ask bufferSize1 bytes for external memory
+    CHECK_CUSPARSE(
+        cusparseSpGEMM_workEstimation(handle, opA, opB,
+                                      &alpha, matA, matB, &beta, matC,
+                                      computeType, CUSPARSE_SPGEMM_DEFAULT,
+                                      spgemmDesc, &bufferSize1, NULL) )
+    CHECK_CUDA( cudaMalloc((void**) &dBuffer1, bufferSize1) )
+    // inspect the matrices A and B to understand the memory requirement for
+    // the next step
+    CHECK_CUSPARSE(
+        cusparseSpGEMM_workEstimation(handle, opA, opB,
+                                      &alpha, matA, matB, &beta, matC,
+                                      computeType, CUSPARSE_SPGEMM_DEFAULT,
+                                      spgemmDesc, &bufferSize1, dBuffer1) )
+
+    // ask bufferSize2 bytes for external memory
+    CHECK_CUSPARSE(
+        cusparseSpGEMM_compute(handle, opA, opB,
+                               &alpha, matA, matB, &beta, matC,
+                               computeType, CUSPARSE_SPGEMM_DEFAULT,
+                               spgemmDesc, &bufferSize2, NULL) )
+    CHECK_CUDA( cudaMalloc((void**) &dBuffer2, bufferSize2) )
+
+    // compute the intermediate product of A * B
+    CHECK_CUSPARSE( cusparseSpGEMM_compute(handle, opA, opB,
+                                           &alpha, matA, matB, &beta, matC,
+                                           computeType, CUSPARSE_SPGEMM_DEFAULT,
+                                           spgemmDesc, &bufferSize2, dBuffer2) )
+
+    // get matrix C non-zero entries C_nnz1
+    int64_t C_num_rows1, C_num_cols1;
+    CHECK_CUSPARSE( cusparseSpMatGetSize(matC, &C_num_rows1, &C_num_cols1,
+                                         &nnzC) )
+    // allocate matrix C
+    CHECK_CUDA( cudaMalloc((void**) &dC_columns, nnzC * sizeof(int))   )
+    CHECK_CUDA( cudaMalloc((void**) &dC_values,  nnzC * sizeof(float)) )
+
+    // NOTE: if 'beta' != 0, the values of C must be update after the allocation
+    //       of dC_values, and before the call of cusparseSpGEMM_copy
+
+    // update matC with the new pointers
+    CHECK_CUSPARSE(
+        cusparseCsrSetPointers(matC, dC_csrOffsets, dC_columns, dC_values) )
+
+    // if beta != 0, cusparseSpGEMM_copy reuses/updates the values of dC_values
+
+    // copy the final products to the matrix C
+    CHECK_CUSPARSE(
+        cusparseSpGEMM_copy(handle, opA, opB,
+                            &alpha, matA, matB, &beta, matC,
+                            computeType, CUSPARSE_SPGEMM_DEFAULT, spgemmDesc) )
+
+    cudaEventRecord(end);
+    cudaEventSynchronize(end);
+
+    float cusparse_ms;
+    cudaEventElapsedTime(&cusparse_ms, start, end);
+    cudaEventDestroy(start);
+    cudaEventDestroy(end);
+
+    CHECK_CUSPARSE( cusparseSpGEMM_destroyDescr(spgemmDesc) )
+    CHECK_CUSPARSE( cusparseDestroySpMat(matA) )
+    CHECK_CUSPARSE( cusparseDestroySpMat(matB) )
+    CHECK_CUSPARSE( cusparseDestroySpMat(matC) )
+    CHECK_CUSPARSE( cusparseDestroy(handle) )
+
+    return cusparse_ms;
+}
+
+
+float timing_cusparse_spmm_csr(int64_t &nnzA,
+                             int *&dA_csr_offsets, 
+                             int *&dA_csr_columns, 
+                             float *&dA_csr_values,
+
+                             float *&dB_dense
+                             )
+{
+    cudaEvent_t start, end;
+    cudaEventCreate(&start);
+    cudaEventCreate(&end);
+
+    float               alpha       = 1.0f;
+    float               beta        = 0.0f;
+    cusparseHandle_t     handle = NULL;
+    void*                dBuffer    = NULL;
+    size_t bufferSize = 0;
+    cusparseSpMatDescr_t matA;
+    cusparseDnMatDescr_t matB_spmm, matC_spmm;
+    float                *dC_dense;
+    CHECK_CUDA( cudaMalloc((void**) &dC_dense, SIZE_M * SIZE_N * sizeof(float)))
+
+    cudaDeviceSynchronize();
+
+    CHECK_CUSPARSE( cusparseCreate(&handle) )
+    CHECK_CUSPARSE( cusparseCreateCsr(&matA, SIZE_M, SIZE_K, nnzA,
+                                      dA_csr_offsets, dA_csr_columns, dA_csr_values,
+                                      CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
+                                      CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) )
+    // Create dense matrix B
+    CHECK_CUSPARSE( cusparseCreateDnMat(&matB_spmm, SIZE_K, SIZE_N, SIZE_N, dB_dense,
+                                        CUDA_R_32F, CUSPARSE_ORDER_ROW) )
+    // Create dense matrix C
+    CHECK_CUSPARSE( cusparseCreateDnMat(&matC_spmm, SIZE_M, SIZE_N, SIZE_N, dC_dense,
+                                        CUDA_R_32F, CUSPARSE_ORDER_ROW) )
+
+    cudaEventRecord(start);
+    // allocate an external buffer if needed
+    CHECK_CUSPARSE( cusparseSpMM_bufferSize(
+                                 handle,
+                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                 &alpha, matA, matB_spmm, &beta, matC_spmm, CUDA_R_32F,
+                                 CUSPARSE_SPMM_ALG_DEFAULT, &bufferSize) )
+    CHECK_CUDA( cudaMalloc(&dBuffer, bufferSize) )
+
+    // execute SpMM
+    CHECK_CUSPARSE( cusparseSpMM(handle,
+                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                 &alpha, matA, matB_spmm, &beta, matC_spmm, CUDA_R_32F,
+                                 CUSPARSE_SPMM_ALG_DEFAULT, dBuffer) )
+
+    cudaEventRecord(end);
+    cudaEventSynchronize(end);
+
+    float time_ms;
+    cudaEventElapsedTime(&time_ms, start, end);
+    cudaEventDestroy(start);
+    cudaEventDestroy(end);
+
+
+    CHECK_CUSPARSE( cusparseDestroySpMat(matA) )
+    CHECK_CUSPARSE( cusparseDestroyDnMat(matB_spmm) )
+    CHECK_CUSPARSE( cusparseDestroyDnMat(matC_spmm) )
+    CHECK_CUSPARSE( cusparseDestroy(handle) )
+    cudaFree(dBuffer);
+    cudaFree(dC_dense);
+
+    return time_ms;
+}
+
+template <typename InputType>
+float timing_cusparseLt(InputType *&dA, 
+                        InputType *&dB
+                             )
+{
+    cudaEvent_t start, end;
+    cudaEventCreate(&start);
+    cudaEventCreate(&end);
+    int major_cc, minor_cc;
+    CHECK_CUDA( cudaDeviceGetAttribute(&major_cc,
+                                       cudaDevAttrComputeCapabilityMajor, 0) )
+    CHECK_CUDA( cudaDeviceGetAttribute(&minor_cc,
+                                       cudaDevAttrComputeCapabilityMinor, 0) )
+    if (!(major_cc == 8 && minor_cc == 0) &&
+        !(major_cc == 8 && minor_cc == 6)) {
+        std::printf("\ncusparseLt is supported only on GPU devices with"
+                    " compute capability == 8.0, 8.6 current: %d.%d\n\n",
+                     major_cc, minor_cc);
+        return -1;
+    }
+
+    float               alpha       = 1.0f;
+    float               beta        = 0.0f;
+    constexpr int m     = SIZE_M; // bigger sizes may require dynamic allocations
+    constexpr int n     = SIZE_K; // bigger sizes may require dynamic allocations
+    constexpr int k     = SIZE_N; // bigger sizes may require dynamic allocations
+    auto          order = CUSPARSE_ORDER_ROW;
+    auto          opA   = CUSPARSE_OPERATION_NON_TRANSPOSE;
+    auto          opB   = CUSPARSE_OPERATION_TRANSPOSE;
+    auto          type  = CUDA_R_8I;
+    auto          compute_type = CUSPARSE_COMPUTE_32I;
+    if (typeid(InputType) == typeid(__half)) 
+    {
+        printf("cusparseLt using fp16\n");
+        type  = CUDA_R_16F;
+        compute_type = CUSPARSE_COMPUTE_16F;
+    }
+    else if (typeid(InputType) == typeid(signed char))
+    {
+        printf("cusparseLt using int8\n");
+        type  = CUDA_R_8I;
+        compute_type = CUSPARSE_COMPUTE_32I;
+    }
+
+    bool     is_rowmajor    = (order == CUSPARSE_ORDER_ROW);
+    bool     isA_transposed = (opA != CUSPARSE_OPERATION_NON_TRANSPOSE);
+    bool     isB_transposed = (opB != CUSPARSE_OPERATION_NON_TRANSPOSE);
+    auto     num_A_rows     = (isA_transposed) ? k : m;
+    auto     num_A_cols     = (isA_transposed) ? m : k;
+    auto     num_B_rows     = (isB_transposed) ? n : k;
+    auto     num_B_cols     = (isB_transposed) ? k : n;
+    auto     num_C_rows     = m;
+    auto     num_C_cols     = n;
+    unsigned alignment      = 16;
+    auto     lda            = (is_rowmajor) ? num_A_cols : num_A_rows;
+    auto     ldb            = (is_rowmajor) ? num_B_cols : num_B_rows;
+    auto     ldc            = (is_rowmajor) ? num_C_cols : num_C_rows;
+    auto     A_height       = (is_rowmajor) ? num_A_rows : num_A_cols;
+    auto     B_height       = (is_rowmajor) ? num_B_rows : num_B_cols;
+    auto     C_height       = (is_rowmajor) ? num_C_rows : num_C_cols;
+    auto     A_size         = A_height * lda * sizeof(InputType);
+    auto     B_size         = B_height * ldb * sizeof(InputType);
+    auto     C_size         = C_height * ldc * sizeof(int);
+
+
+    InputType *dA_compressed;
+    int    *dC, *dD;
+    int    *d_valid;
+    CHECK_CUDA( cudaMalloc((void**) &dC, C_size) )
+    CHECK_CUDA( cudaMalloc((void**) &d_valid, sizeof(d_valid)) )
+    dD = dC;
+
+    //--------------------------------------------------------------------------
+    // cusparseLt data structures and handle initialization
+    cusparseLtHandle_t             handle;
+    cusparseLtMatDescriptor_t      matA, matB, matC;
+    cusparseLtMatmulDescriptor_t   matmul;
+    cusparseLtMatmulAlgSelection_t alg_sel;
+    cusparseLtMatmulPlan_t         plan;
+    cudaStream_t                   stream = nullptr;
+    CHECK_CUSPARSE( cusparseLtInit(&handle) )
+    // matrix descriptor initialization
+    CHECK_CUSPARSE( cusparseLtStructuredDescriptorInit(
+                                            &handle, &matA, num_A_rows,
+                                            num_A_cols, lda, alignment,
+                                            type, order,
+                                            CUSPARSELT_SPARSITY_50_PERCENT) )
+    CHECK_CUSPARSE( cusparseLtDenseDescriptorInit(
+                                            &handle, &matB, num_B_rows,
+                                            num_B_cols, ldb, alignment,
+                                            type, order) )
+    CHECK_CUSPARSE( cusparseLtDenseDescriptorInit(
+                                            &handle, &matC, num_C_rows,
+                                            num_C_cols, ldc, alignment,
+                                            type, order) )
+    // matmul, algorithm selection, and plan initialization
+    CHECK_CUSPARSE( cusparseLtMatmulDescriptorInit(
+                                            &handle, &matmul, opA, opB,
+                                            &matA, &matB, &matC, &matC,
+                                            compute_type) )
+    CHECK_CUSPARSE( cusparseLtMatmulAlgSelectionInit(
+                                            &handle, &alg_sel, &matmul,
+                                            CUSPARSELT_MATMUL_ALG_DEFAULT) )
+    int alg = 0;
+    CHECK_CUSPARSE( cusparseLtMatmulAlgSetAttribute(
+                                            &handle, &alg_sel,
+                                            CUSPARSELT_MATMUL_ALG_CONFIG_ID,
+                                            &alg, sizeof(alg)))
+    size_t workspace_size, compressed_size;
+    CHECK_CUSPARSE( cusparseLtMatmulPlanInit(&handle, &plan, &matmul, &alg_sel,
+                                             workspace_size) )
+
+    CHECK_CUSPARSE( cusparseLtMatmulGetWorkspace(&handle, &plan,
+                                                 &workspace_size))
+
+    //--------------------------------------------------------------------------
+    // Prune the A matrix (in-place) and check the correcteness
+    CHECK_CUSPARSE( cusparseLtSpMMAPrune(&handle, &matmul, dA, dA,
+                                         CUSPARSELT_PRUNE_SPMMA_TILE, stream) )
+    CHECK_CUSPARSE( cusparseLtSpMMAPruneCheck(&handle, &matmul, dA,
+                                              d_valid, stream) )
+    int is_valid;
+    CHECK_CUDA( cudaMemcpyAsync(&is_valid, d_valid, sizeof(d_valid),
+                                cudaMemcpyDeviceToHost, stream) )
+    CHECK_CUDA( cudaStreamSynchronize(stream) )
+    if (is_valid != 0) {
+        std::printf("!!!! The matrix has been pruned in a wrong way. "
+                    "cusparseLtMatmul will not provide correct results\n");
+        return EXIT_FAILURE;
+    }
+    //--------------------------------------------------------------------------
+    // Compress the A matrix
+    CHECK_CUSPARSE( cusparseLtSpMMACompressedSize(&handle, &plan,
+                                                  &compressed_size) )
+    CHECK_CUDA( cudaMalloc((void**) &dA_compressed, compressed_size) )
+
+    CHECK_CUSPARSE( cusparseLtSpMMACompress(&handle, &plan, dA,
+                                            dA_compressed, stream) )
+    //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // Search the best kernel
+    void*         d_workspace = nullptr;
+    int           num_streams = 0;
+    cudaStream_t* streams     = nullptr;
+    // CHECK_CUSPARSE( cusparseLtMatmulSearch(&handle, &plan, &alpha,
+    //                                        dA_compressed, dB, &beta,
+    //                                        dC, dD, d_workspace,
+    //                                        streams, num_streams) )
+    int alg_id;
+    CHECK_CUSPARSE( cusparseLtMatmulAlgGetAttribute(
+                                           &handle, &alg_sel,
+                                           CUSPARSELT_MATMUL_ALG_CONFIG_ID,
+                                           &alg_id, sizeof(alg_id)) )
+    //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // Perform the matrix multiplication
+    cudaEventRecord(start);
+
+    CHECK_CUSPARSE( cusparseLtMatmul(&handle, &plan, &alpha, dA_compressed, dB,
+                                     &beta, dC, dD, d_workspace, streams,
+                                     num_streams) )
+
+
+    cudaEventRecord(end);
+    cudaEventSynchronize(end);
+
+    float time_ms = 0;
+    cudaEventElapsedTime(&time_ms, start, end);
+    cudaEventDestroy(start);
+    cudaEventDestroy(end);
+
+    //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // destroy plan and handle
+    CHECK_CUSPARSE( cusparseLtMatDescriptorDestroy(&matA) )
+    CHECK_CUSPARSE( cusparseLtMatDescriptorDestroy(&matB) )
+    CHECK_CUSPARSE( cusparseLtMatDescriptorDestroy(&matC) )
+    CHECK_CUSPARSE( cusparseLtMatmulPlanDestroy(&plan) )
+    CHECK_CUSPARSE( cusparseLtDestroy(&handle) )
+    return time_ms;
+}
+
+
+int cusparse_sparse2dense(int64_t &nnz, int *&d_csr_offsets, int *&d_csr_columns, float *&d_csr_values, float *&d_dense)
+{
+    cusparseHandle_t     handle = NULL;
+    cusparseSpMatDescr_t matA;
+    cusparseDnMatDescr_t matB;
+    void*                dBuffer    = NULL;
+    size_t               bufferSize = 0;
+    CHECK_CUSPARSE( cusparseCreate(&handle) )
+    // Create sparse matrix A in CSR format
+    CHECK_CUSPARSE( cusparseCreateCsr(&matA, SIZE_M, SIZE_N, nnz,
+                                      d_csr_offsets, d_csr_columns,
+                                      d_csr_values, CUSPARSE_INDEX_32I,
+                                      CUSPARSE_INDEX_32I,
+                                      CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) )
+    // Create dense matrix B
+    CHECK_CUSPARSE( cusparseCreateDnMat(&matB, SIZE_M, SIZE_N, SIZE_N, d_dense,
+                                        CUDA_R_32F, CUSPARSE_ORDER_ROW) )
+    // allocate an external buffer if needed
+    CHECK_CUSPARSE( cusparseSparseToDense_bufferSize(
+                                        handle, matA, matB,
+                                        CUSPARSE_SPARSETODENSE_ALG_DEFAULT,
+                                        &bufferSize) )
+    CHECK_CUDA( cudaMalloc(&dBuffer, bufferSize) )
+
+    // execute Sparse to Dense conversion
+    CHECK_CUSPARSE( cusparseSparseToDense(handle, matA, matB,
+                                          CUSPARSE_SPARSETODENSE_ALG_DEFAULT,
+                                          dBuffer) )
+    // destroy matrix/vector descriptors
+    CHECK_CUSPARSE( cusparseDestroySpMat(matA) )
+    CHECK_CUSPARSE( cusparseDestroyDnMat(matB) )
+    CHECK_CUSPARSE( cusparseDestroy(handle) )
+
+    return 0;
+}
+
+
 int main(int argc, char ** argv) 
 {
     // using IndexType = int;
@@ -781,6 +1189,7 @@ int main(int argc, char ** argv)
     int *dB_group_ele_ind;
     BitMaskType *dB_bitmask, *dB_groupmask;
 
+    //--------------------------------------------------------------------------
     // basic allocation
     CHECK_CUDA( cudaMalloc((void**) &dA_dense,          m * k * sizeof(InitValueType)) )
     CHECK_CUDA( cudaMalloc((void**) &dA_csr_offsets,   (m + 1) * sizeof(int)) )
@@ -788,6 +1197,7 @@ int main(int argc, char ** argv)
     CHECK_CUDA( cudaMalloc((void**) &dB_csr_offsets,   (k + 1) * sizeof(int)) )
     CHECK_CUDA( cudaMalloc((void**) &dC_csrOffsets,    (m + 1) * sizeof(int)) )
 
+    //--------------------------------------------------------------------------
     // advanced allocation
     CHECK_CUDA( cudaMalloc((void**) &dB_bitmask,        k * n / TILE_WIDTH * sizeof(BitMaskType)) )
     CHECK_CUDA( cudaMalloc((void**) &dB_groupmask,      tileB_cnt * MAX_GROUP_NUM * sizeof(int)) )
@@ -802,14 +1212,31 @@ int main(int argc, char ** argv)
     
     CHECK_CUDA( cudaMemcpy(dA_dense, hA_dense, m * k * sizeof(InitValueType), cudaMemcpyHostToDevice) )
     CHECK_CUDA( cudaMemcpy(dB_dense, hB_dense, k * n * sizeof(InitValueType), cudaMemcpyHostToDevice) )
-                
+
+    //--------------------------------------------------------------------------
+    // Format conversion
+    dim3 grid_for_convert_A(SIZE_M/32, SIZE_K/32, 1), grid_for_convert_B(SIZE_K/32, SIZE_N/32, 1);
+    dim3 block_for_convert(32, 32, 1);
+    half *dA_dense_half, *dB_dense_half;
+    CHECK_CUDA( cudaMalloc((void**) &dA_dense_half,  SIZE_M * SIZE_K * sizeof(half)) )
+    CHECK_CUDA( cudaMalloc((void**) &dB_dense_half,  SIZE_K * SIZE_N * sizeof(half)) )
+    
+    format_convert<<<grid_for_convert_A, block_for_convert>>>(dA_dense, dA_dense_half);
+    format_convert<<<grid_for_convert_B, block_for_convert>>>(dB_dense, dB_dense_half);
+
+    ValueType *dA_dense_int8, *dB_dense_int8;
+    CHECK_CUDA( cudaMalloc((void**) &dA_dense_int8,  SIZE_M * SIZE_K * sizeof(ValueType)) )
+    CHECK_CUDA( cudaMalloc((void**) &dB_dense_int8,  SIZE_K * SIZE_N * sizeof(ValueType)) )
+    
+    format_convert<<<grid_for_convert_A, block_for_convert>>>(dA_dense, dA_dense_int8);
+    format_convert<<<grid_for_convert_B, block_for_convert>>>(dB_dense, dB_dense_int8);
+
 
     printf("Matrix B dense2bitmask...\n");
     dense2bitmask<<<grid1, block1>>>(dB_dense, dB_bitmask);
 
-
     printf("Matrix A dense2CSR...\n");
-    int64_t nnzA;
+    int64_t nnzA, nnzB, nnzC;
 
     dense2CSR(m, k, dA_dense, dA_csr_values, dA_csr_offsets, dA_csr_columns, nnzA);
 
@@ -819,26 +1246,6 @@ int main(int argc, char ** argv)
     cudaMemcpy(hA_csr_offsets, dA_csr_offsets, sizeof(int) * (m + 1), cudaMemcpyDeviceToHost);
     cudaMemcpy(hA_csr_columns, dA_csr_columns, sizeof(int) * nnzA, cudaMemcpyDeviceToHost);
     cudaMemcpy(hA_csr_values, dA_csr_values, sizeof(float) * nnzA, cudaMemcpyDeviceToHost);
-
-    // std::cout << "nnzA: " << nnzA << std::endl;
-    // for (int i = 0; i < m+1; i++)
-    // {
-    //     std::cout << hA_csr_offsets[i] << " ";
-    // }
-    // std::cout << std::endl;
-
-
-    // for (int i = 0; i < nnzA; i++)
-    // {
-    //     std::cout << hA_csr_columns[i] << " ";
-    // }
-    // std::cout << std::endl;
-
-    // for (int i = 0; i < nnzA; i++)
-    // {
-    //     std::cout << hA_csr_values[i] << " ";
-    // }
-    // std::cout << std::endl;
 
     printf("Transform CSR to tiled CSR\n");
     int tileA_cnt = (SIZE_M/TILE_HEIGHT)*(SIZE_K/SPLIT_K);
@@ -872,29 +1279,9 @@ int main(int argc, char ** argv)
     cudaMemcpy(hA_tiled_csr_column, dA_tiled_csr_column, sizeof(int) * nnzA, cudaMemcpyDeviceToHost);
     cudaMemcpy(hA_tiled_csr_value, dA_tiled_csr_value, sizeof(ValueType) * nnzA, cudaMemcpyDeviceToHost);
 
-    // for (int i = 0; i < tileA_cnt * (TILE_HEIGHT+1); i++)
-    // {
-    //     std::cout << hA_tiled_csr_offset[i] << " ";
-    // }
-    // std::cout << std::endl;
 
-
-    // for (int i = 0; i < nnzA; i++)
-    // {
-    //     std::cout << hA_tiled_csr_column[i] << " ";
-    // }
-    // std::cout << std::endl;
-
-    // for (int i = 0; i < nnzA; i++)
-    // {
-    //     std::cout << (int)hA_tiled_csr_value[i] << " ";
-    // }
-    // std::cout << std::endl;
-
-    int64_t nnzB;
     dense2CSR(k, n, dB_dense, dB_csr_values, dB_csr_offsets, dB_csr_columns, nnzB);
 
-    std::cout << "nnzB: " << nnzB << std::endl;
 
     int *hB_csr_offsets = (int*)malloc(sizeof(int) * (k + 1));
     int *hB_csr_columns = (int*)malloc(sizeof(int) * nnzB);
@@ -1020,11 +1407,9 @@ int main(int argc, char ** argv)
     CHECK_CUDA( cudaMalloc((void**) &dC_spilled_row_buffersize,  sizeof(int)) )
     CHECK_CUDA( cudaMalloc((void**) &dC_spilled_nnz_buffersize,  sizeof(int)) )
 
-    cudaEvent_t start, end, cusparse_start, cusparse_end;
+    cudaEvent_t start, end;
     cudaEventCreate(&start);
     cudaEventCreate(&end);
-    cudaEventCreate(&cusparse_start);
-    cudaEventCreate(&cusparse_end);
 
     // spgemm
 
@@ -1032,7 +1417,6 @@ int main(int argc, char ** argv)
     CHECK_CUDA( cudaMalloc((void**) &dC_nnz, sizeof(int) * 1) )
     int *hC_nnz = (int*)malloc(sizeof(int));
 
-    cudaEventRecord(start);
     dim3 grid_2d(SIZE_N/TILE_WIDTH, SIZE_M/TILE_HEIGHT, 1), block_1d(TILE_HEIGHT, 1, 1);
     pre_spgemm<<<grid_2d, block_1d>>>(dB_bitmask, 
                                       dC_spilled_row_cnt, 
@@ -1130,7 +1514,9 @@ int main(int argc, char ** argv)
     ValueType *d_probe;
     CHECK_CUDA( cudaMalloc((void**) &d_probe,     16 * 8 * 32 * sizeof(ValueType)) )
 
-    spgemm_compute_1dthread_tcore<<<grid_2d, block_1d>>>(
+    cudaEventRecord(start);
+
+    spgemm_compute_1dthread_tcore_v2<<<grid_2d, block_1d>>>(
                                                 dB_bitmask, 
                                                 dB_group_id, 
                                                 dB_spilled_row_hash_table_reverse_gmem,
@@ -1183,7 +1569,9 @@ int main(int argc, char ** argv)
     float* hC_group_value = (float *)malloc(tileC_cnt * TILE_WIDTH * (OUTPUT_MAX_GROUP_NUM*4) * sizeof(float));
     cudaMemcpy(hC_group_value, dC_group_value, tileC_cnt * TILE_WIDTH * (OUTPUT_MAX_GROUP_NUM*4) * sizeof(float), cudaMemcpyDeviceToHost);
     printf("group_value\n");
-    printMatrix(16, 32, hC_group_value, "hC_group_value", 6);
+    // printMatrix(16, 32, hC_group_value, "hC_group_value", 6);
+
+    cudaDeviceSynchronize();
 
     float ms;
     cudaEventElapsedTime(&ms, start, end);
@@ -1195,134 +1583,21 @@ int main(int argc, char ** argv)
     cudaMemcpy(hC_spilled_row_cnt, dC_spilled_row_cnt, tileC_cnt * sizeof(int), cudaMemcpyDeviceToHost);
     cudaMemcpy(hC_spilled_nnz, dC_spilled_nnz, tileC_cnt * sizeof(int), cudaMemcpyDeviceToHost);
 
-    // printf("hC_spilled_row_cnt: %d\n\n", *hC_spilled_row_buffersize);
+    // cusparse: spgemm
+    float cusparse_ms = timing_cusparse_spgemm(nnzA, nnzB, nnzC, dA_csr_offsets, dA_csr_columns, dA_csr_values, 
+                                        dB_csr_offsets, dB_csr_columns, dB_csr_values,
+                                        dC_csrOffsets, dC_columns, dC_values);
+    // cusparse: spmm
+    float cusparse_spmm_ms = timing_cusparse_spmm_csr(nnzA, dA_csr_offsets, dA_csr_columns, dA_csr_values, dB_dense);
 
-    // for (int i = 0; i < tileC_cnt; i++)
-    // {
-    //     printf("hC_spilled_row_cnt: %d\n", hC_spilled_row_cnt[i]);
-    // }
+    // cusparseLt
+    float cusparseLt_ms = timing_cusparseLt(dA_dense_int8, dB_dense_int8);
 
-    // cusparse
-    cusparseSpMatDescr_t matA, matB, matC;
-    void*  dBuffer1    = NULL, *dBuffer2   = NULL;
-    size_t bufferSize1 = 0,    bufferSize2 = 0;
-    CHECK_CUSPARSE( cusparseCreateCsr(&matA, SIZE_M, SIZE_K, nnzA,
-                                      dA_csr_offsets, dA_csr_columns, dA_csr_values,
-                                      CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
-                                      CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) )
-    CHECK_CUSPARSE( cusparseCreateCsr(&matB, SIZE_K, SIZE_N, nnzB,
-                                      dB_csr_offsets, dB_csr_columns, dB_csr_values,
-                                      CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
-                                      CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) )
-    CHECK_CUSPARSE( cusparseCreateCsr(&matC, SIZE_M, SIZE_N, 0,
-                                      NULL, NULL, NULL,
-                                      CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
-                                      CUSPARSE_INDEX_BASE_ZERO, CUDA_R_32F) )
-
-    float               alpha       = 1.0f;
-    float               beta        = 0.0f;
-    cusparseOperation_t opA         = CUSPARSE_OPERATION_NON_TRANSPOSE;
-    cusparseOperation_t opB         = CUSPARSE_OPERATION_NON_TRANSPOSE;
-    cudaDataType        computeType = CUDA_R_32F;
-    //--------------------------------------------------------------------------
-    // SpGEMM Computation
-    cusparseHandle_t     handle = NULL;
-    CHECK_CUSPARSE( cusparseCreate(&handle) )
-
-    cudaEventRecord(cusparse_start);
-    cusparseSpGEMMDescr_t spgemmDesc;
-    CHECK_CUSPARSE( cusparseSpGEMM_createDescr(&spgemmDesc) )
-
-    // ask bufferSize1 bytes for external memory
-    CHECK_CUSPARSE(
-        cusparseSpGEMM_workEstimation(handle, opA, opB,
-                                      &alpha, matA, matB, &beta, matC,
-                                      computeType, CUSPARSE_SPGEMM_DEFAULT,
-                                      spgemmDesc, &bufferSize1, NULL) )
-    CHECK_CUDA( cudaMalloc((void**) &dBuffer1, bufferSize1) )
-    // inspect the matrices A and B to understand the memory requirement for
-    // the next step
-    CHECK_CUSPARSE(
-        cusparseSpGEMM_workEstimation(handle, opA, opB,
-                                      &alpha, matA, matB, &beta, matC,
-                                      computeType, CUSPARSE_SPGEMM_DEFAULT,
-                                      spgemmDesc, &bufferSize1, dBuffer1) )
-
-    // ask bufferSize2 bytes for external memory
-    CHECK_CUSPARSE(
-        cusparseSpGEMM_compute(handle, opA, opB,
-                               &alpha, matA, matB, &beta, matC,
-                               computeType, CUSPARSE_SPGEMM_DEFAULT,
-                               spgemmDesc, &bufferSize2, NULL) )
-    CHECK_CUDA( cudaMalloc((void**) &dBuffer2, bufferSize2) )
-
-    // compute the intermediate product of A * B
-    CHECK_CUSPARSE( cusparseSpGEMM_compute(handle, opA, opB,
-                                           &alpha, matA, matB, &beta, matC,
-                                           computeType, CUSPARSE_SPGEMM_DEFAULT,
-                                           spgemmDesc, &bufferSize2, dBuffer2) )
-
-    // get matrix C non-zero entries C_nnz1
-    int64_t C_num_rows1, C_num_cols1, C_nnz1;
-    CHECK_CUSPARSE( cusparseSpMatGetSize(matC, &C_num_rows1, &C_num_cols1,
-                                         &C_nnz1) )
-    // allocate matrix C
-    CHECK_CUDA( cudaMalloc((void**) &dC_columns, C_nnz1 * sizeof(int))   )
-    CHECK_CUDA( cudaMalloc((void**) &dC_values,  C_nnz1 * sizeof(float)) )
-
-    // NOTE: if 'beta' != 0, the values of C must be update after the allocation
-    //       of dC_values, and before the call of cusparseSpGEMM_copy
-
-    // update matC with the new pointers
-    CHECK_CUSPARSE(
-        cusparseCsrSetPointers(matC, dC_csrOffsets, dC_columns, dC_values) )
-
-    // if beta != 0, cusparseSpGEMM_copy reuses/updates the values of dC_values
-
-    // copy the final products to the matrix C
-    CHECK_CUSPARSE(
-        cusparseSpGEMM_copy(handle, opA, opB,
-                            &alpha, matA, matB, &beta, matC,
-                            computeType, CUSPARSE_SPGEMM_DEFAULT, spgemmDesc) )
-
-    cudaEventRecord(cusparse_end);
-    cudaEventSynchronize(cusparse_end);
-
-    float cusparse_ms;
-    cudaEventElapsedTime(&cusparse_ms, cusparse_start, cusparse_end);
-    cudaEventDestroy(cusparse_start);
-    cudaEventDestroy(cusparse_end);
-
-    cusparseDnMatDescr_t matC_dense;
-    void*                dBuffer    = NULL;
-    size_t               bufferSize = 0;
-    float                *dC_dense_float;
+    float *dC_dense_float;
     CHECK_CUDA( cudaMalloc((void**) &dC_dense_float, SIZE_M * SIZE_N * sizeof(float)))
-    CHECK_CUSPARSE( cusparseCreateDnMat(&matC_dense, SIZE_M, SIZE_N, SIZE_N, dC_dense_float,
-                                        CUDA_R_32F, CUSPARSE_ORDER_ROW) )
-
-    CHECK_CUSPARSE( cusparseSparseToDense_bufferSize(
-                                        handle, matC, matC_dense,
-                                        CUSPARSE_SPARSETODENSE_ALG_DEFAULT,
-                                        &bufferSize) )
-    CHECK_CUDA( cudaMalloc(&dBuffer, bufferSize) )
-    // execute Sparse to Dense conversion
-    CHECK_CUSPARSE( cusparseSparseToDense(handle, matC, matC_dense,
-                                          CUSPARSE_SPARSETODENSE_ALG_DEFAULT,
-                                          dBuffer) )
-
-    // destroy matrix/vector descriptors
-    CHECK_CUSPARSE( cusparseSpGEMM_destroyDescr(spgemmDesc) )
-    CHECK_CUSPARSE( cusparseDestroySpMat(matA) )
-    CHECK_CUSPARSE( cusparseDestroySpMat(matB) )
-    CHECK_CUSPARSE( cusparseDestroySpMat(matC) )
-    CHECK_CUSPARSE( cusparseDestroyDnMat(matC_dense) )
-    CHECK_CUSPARSE( cusparseDestroy(handle) )
-
-    // device result check
+    cusparse_sparse2dense(nnzC, dC_csrOffsets, dC_columns, dC_values, dC_dense_float);
     CHECK_CUDA( cudaMemcpy(hC_dense_float, dC_dense_float, SIZE_M * SIZE_N * sizeof(float), cudaMemcpyDeviceToHost) )
-
-    // printMatrixTile(32, 32, SIZE_N, hC_dense_float, "Mat C ground truth (tile)");
+    // printMatrixTile(16, 32, SIZE_N, hC_dense_float, "Mat C ground truth (tile)");
 
     float *dC_group_float;
     CHECK_CUDA( cudaMalloc((void**) &dC_group_float,  tileC_cnt * OUTPUT_MAX_GROUP_NUM * TILE_WIDTH * sizeof(float)) )
@@ -1333,32 +1608,24 @@ int main(int argc, char ** argv)
     printMatrix(16, 32, hC_group_float, "Mat C group rebuild from ground truth", 6);
 
     // tSparse
-    dim3 grid_for_convert_A(SIZE_M/32, SIZE_K/32, 1), grid_for_convert_B(SIZE_K/32, SIZE_N/32, 1);
-    dim3 block_for_convert(32, 32, 1);
-    ValueType *dA_dense_int8, *dB_dense_int8;
-    CHECK_CUDA( cudaMalloc((void**) &dA_dense_int8,  SIZE_M * SIZE_K * sizeof(ValueType)) )
-    CHECK_CUDA( cudaMalloc((void**) &dB_dense_int8,  SIZE_K * SIZE_N * sizeof(ValueType)) )
-    
-    format_convert<<<grid_for_convert_A, block_for_convert>>>(dA_dense, dA_dense_int8);
-    format_convert<<<grid_for_convert_B, block_for_convert>>>(dB_dense, dB_dense_int8);
-    typedef typename cusp::array1d_view< thrust::device_ptr<ValueType> > DeviceArray1dView;
+    typedef typename cusp::array1d_view< thrust::device_ptr<float> > DeviceArray1dView;
     typedef cusp::array2d_view<DeviceArray1dView, cusp::row_major> DeviceArray2dView;
 
     // *NOTE* raw pointers must be wrapped with thrust::device_ptr!
-    thrust::device_ptr<ValueType> wrapped_device_A(dA_dense_int8);
+    thrust::device_ptr<float> wrapped_device_A(dA_dense);
     // use array1d_view to represent the linear array data
     DeviceArray1dView linear_array_A(wrapped_device_A, wrapped_device_A + SIZE_M*SIZE_K);
     // use array2d_view to wrap the linear array
     DeviceArray2dView A_dense(SIZE_M, SIZE_K, SIZE_K, linear_array_A);
 
-    thrust::device_ptr<ValueType> wrapped_device_B(dB_dense_int8);
+    thrust::device_ptr<float> wrapped_device_B(dB_dense);
     DeviceArray1dView linear_array_B(wrapped_device_B, wrapped_device_B + SIZE_K*SIZE_N);
     DeviceArray2dView B_dense(SIZE_K, SIZE_N, SIZE_N, linear_array_B);
 
-    cusp::coo_matrix<int, ValueType, cusp::host_memory> A_COO_h(SIZE_M, SIZE_K, nnzA);
-    cusp::coo_matrix<int, ValueType, cusp::host_memory> B_COO_h(SIZE_K, SIZE_N, nnzB);
-    cusp::array2d<ValueType, cusp::host_memory, cusp::row_major> A_dense_h(A_dense);
-    cusp::array2d<ValueType, cusp::host_memory, cusp::row_major> B_dense_h(B_dense);
+    cusp::coo_matrix<int, float, cusp::host_memory> A_COO_h(SIZE_M, SIZE_K, nnzA);
+    cusp::coo_matrix<int, float, cusp::host_memory> B_COO_h(SIZE_K, SIZE_N, nnzB);
+    cusp::array2d<float, cusp::host_memory, cusp::row_major> A_dense_h(A_dense);
+    cusp::array2d<float, cusp::host_memory, cusp::row_major> B_dense_h(B_dense);
 
     cusp::convert(A_dense_h, A_COO_h);
     cusp::convert(B_dense_h, B_COO_h);
@@ -1455,12 +1722,15 @@ int main(int argc, char ** argv)
                &time_step1,&time_step2,&time_step3,&time_malloc);
     // printf("matrixA-nnz: %d\n", matrixA->nnz);
 
-    printf("bitSparse elapsed time:   %fms\n", ms);
-    printf("cusparse elapsed time:    %fms\n", cusparse_ms);
-    printf("tSparse elpased time:     %fms\n", tsparse_ms);
-    printf("TileSpGEMM elpased time:  %fms\n", tilespgemm_time);
+    printf("bitSparse elapsed time:          %fms\n", ms);
+    printf("cusparse-SpGEMM elapsed time:    %fms\n", cusparse_ms);
+    printf("cusparse-SpMM elapsed time:      %fms\n", cusparse_spmm_ms);
+    printf("cusparseLt elapsed time:         %fms\n", cusparseLt_ms);
+    printf("tSparse elpased time:            %fms\n", tsparse_ms);
+    printf("TileSpGEMM elpased time:         %fms\n", tilespgemm_time);
 
-    printf("\nC_sparsity: %f, nnz_C: %d\n", 1.0 - float(C_nnz1)/SIZE_M/SIZE_N, C_nnz1);
+
+    // printf("\nC_sparsity: %f, nnz_C: %d\n", 1.0 - float(C_nnz1)/SIZE_M/SIZE_N, C_nnz1);
     
     // print MatA's information
     if (PRINT_MAT_A_INFO)

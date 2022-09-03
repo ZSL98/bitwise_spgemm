@@ -1562,7 +1562,7 @@ __global__ void spgemm_compute_1dthread_tcore(
 
     // intermediate buffers
     __shared__ BitMaskType group_indicator[OUTPUT_MAX_GROUP_NUM][BIT_WIDTH][MAX_GROUP_NUM];
-    __shared__ OutputType result[OUTPUT_MAX_GROUP_NUM][BIT_WIDTH][TILE_WIDTH];
+    // __shared__ OutputType result[OUTPUT_MAX_GROUP_NUM][BIT_WIDTH][TILE_WIDTH];
 
     // if (threadIdx.x < 128)
     // {
@@ -1708,24 +1708,24 @@ __global__ void spgemm_compute_1dthread_tcore(
                     }
                 }
             }
-            else if (row_group_id == -1 && output_group_idx != -1)
-            {
-                int row_in_csr = spilled_row_hash_table_reverse_smem[entry_col];
-                int start_offset;
-                if (row_in_csr == 0)
-                {
-                    start_offset = 0;
-                }
-                else 
-                {
-                    start_offset = dB_tile_spilled_csrRowPtr[dB_spilled_row_cnt_offset[tileB_id] + row_in_csr - 1];
-                }
-                for (int j = start_offset; j < dB_tile_spilled_csrRowPtr[dB_spilled_row_cnt_offset[tileB_id] + row_in_csr]; j++)
-                {
-                    int col_ind = dB_tile_spilled_csrColInd[dB_spilled_nnz_offset[tileB_id] + j];
-                    result[output_group_idx][1][col_ind] += tiled_csr_value_smem[z] * dB_tile_spilled_csrVal[dB_spilled_nnz_offset[tileB_id] + j];
-                }
-            }
+            // else if (row_group_id == -1 && output_group_idx != -1)
+            // {
+            //     int row_in_csr = spilled_row_hash_table_reverse_smem[entry_col];
+            //     int start_offset;
+            //     if (row_in_csr == 0)
+            //     {
+            //         start_offset = 0;
+            //     }
+            //     else 
+            //     {
+            //         start_offset = dB_tile_spilled_csrRowPtr[dB_spilled_row_cnt_offset[tileB_id] + row_in_csr - 1];
+            //     }
+            //     for (int j = start_offset; j < dB_tile_spilled_csrRowPtr[dB_spilled_row_cnt_offset[tileB_id] + row_in_csr]; j++)
+            //     {
+            //         int col_ind = dB_tile_spilled_csrColInd[dB_spilled_nnz_offset[tileB_id] + j];
+            //         result[output_group_idx][1][col_ind] += tiled_csr_value_smem[z] * dB_tile_spilled_csrVal[dB_spilled_nnz_offset[tileB_id] + j];
+            //     }
+            // }
         }
 
         // if (threadIdx.x == 0)
@@ -1819,29 +1819,6 @@ __global__ void spgemm_compute_1dthread_tcore(
 
     }
 
-    // if (bid == 0 && threadIdx.x == 0)
-    // {
-    // for (int i = 0; i < 16; i++)
-    // {
-    //     for (int b = 0; b < BIT_WIDTH; b++)
-    //     {
-    //         for (int z = 0; z < TILE_WIDTH; z++)
-    //         {
-    //             signed char tmp;
-    //             if (b == 0) tmp = 1;
-    //             if (b == 1) tmp = 2;
-    //             if (b == 2) tmp = 4;
-    //             if (b == 3) tmp = 8;
-    //             if (b == 4) tmp = 16;
-    //             if (b == 5) tmp = 32;
-    //             if (b == 6) tmp = 64;
-    //             if (b == 7) tmp = -128;
-    //             dC_group_value[i*TILE_WIDTH+z] += d_probe[(i*8 + b)*TILE_WIDTH+z] * tmp;
-    //         }
-    //     }
-    // }
-    // }
-
     // for (int i = 0; i < 8; i++)
     // {
     //     nvcuda::wmma::fill_fragment(B_frag[i], i);
@@ -1870,5 +1847,209 @@ __global__ void spgemm_compute_1dthread_tcore(
 
 }
 
+template <typename BitMaskType,
+          typename ValueType,
+          typename OutputType>
+__global__ void spgemm_compute_1dthread_tcore_v2(
+                BitMaskType *dB_bit_mask_gmem,
+                int *dB_group_id_gmem,
+                int *dB_spilled_row_hash_table_reverse_gmem,
+                ValueType *dB_group_value,
+
+                int *dB_spilled_row_cnt_offset,
+                int *dB_spilled_nnz_offset,
+
+                ValueType *dB_tile_spilled_csrVal,
+                int *dB_tile_spilled_csrColInd,
+                int *dB_tile_spilled_csrRowPtr,
+
+                int *dA_tiled_csr_offset_gmem,
+                int *dA_tiled_csr_column_gmem,
+                ValueType *dA_tiled_csr_value_gmem,
+                int *dA_tile_nnz_acc,
+
+                int *dC_output_group_idx,
+                OutputType *dC_group_value,
+                half *multiplicand
+                // ValueType *d_probe
+            )
+{
+    // input buffers
+    __shared__ int group_id_smem[SPLIT_K];
+    __shared__ int spilled_row_hash_table_reverse_smem[SPLIT_K];
+    __shared__ BitMaskType MatB_bit_smem[SPLIT_K];
+    __shared__ ValueType group[TILE_WIDTH][MAX_GROUP_NUM];
+    __shared__ int tiled_csr_offset_smem[TILE_HEIGHT+1];
+    __shared__ int tiled_csr_column_smem[MAX_TILEA_NNZ];
+    __shared__ ValueType tiled_csr_value_smem[MAX_TILEA_NNZ];
+
+    // intermediate buffers
+    __shared__ BitMaskType group_indicator[OUTPUT_MAX_GROUP_NUM][BIT_WIDTH][MAX_GROUP_NUM];
+    // __shared__ OutputType result[OUTPUT_MAX_GROUP_NUM][BIT_WIDTH][TILE_WIDTH];
+
+    int row_group_id;
+    int bid = blockIdx.x + blockIdx.y * gridDim.x;
+    int output_group_idx = dC_output_group_idx[bid * blockDim.x + threadIdx.x];
+
+    // Declare the fragments
+    nvcuda::wmma::fragment<wmma::matrix_a, 8, 32, 16, half, wmma::row_major> A_frag;
+    nvcuda::wmma::fragment<wmma::matrix_b, 8, 32, 16, half, wmma::row_major> B_frag[8];
+    nvcuda::wmma::fragment<wmma::accumulator, 8, 32, 16, float> C_frag[8];
+
+    // for (int i = 0; i < OUTPUT_MAX_GROUP_NUM * SIZE_M * SIZE_N / TILE_HEIGHT; i++)
+    // {
+    //     dC_group_value[i] = 0;
+    // }
+
+    // Initialize the output to zero
+    for (int i = 0; i < 8; i++)
+    {
+        nvcuda::wmma::fill_fragment(B_frag[i], 0);
+        nvcuda::wmma::fill_fragment(C_frag[i], 0);
+    }
+
+    // Load the inputs
+    nvcuda::wmma::load_matrix_sync(A_frag, multiplicand, 16);
+    // nvcuda::wmma::load_matrix_sync(b_frag, (half *)&group[0][0], 16);
+
+    int tmp;
+    int rowB_ind;
+    int entry;
+    int col_ind, ind, entry_col;
+    int tileA_id, tileB_id, tile_nnz_acc;
+
+    // int csr_column[MAX_LINE_NNZ_A];
+    // float csr_value[MAX_LINE_NNZ_A];
+    // int line_csr_offset_start, line_csr_offset_end;
+
+    int warp_id = threadIdx.x/32; // 256/32=8 output groups per wave
+    int output_row_idx = 2 * warp_id;
+    int lane_id = threadIdx.x % 32;
+
+    for (int k = 0; k < SIZE_K/SPLIT_K; k++)
+    {
+
+        // if (threadIdx.x < 128)
+        // {
+        //     for (int i = 0; i < 4; i++)
+        //     {
+        //         group_indicator[threadIdx.x/8][threadIdx.x%8][i] = 0;
+        //     }
+        // }
+
+        // __syncthreads();
+
+
+        tileA_id = SIZE_K/SPLIT_K * blockIdx.y + k;
+        tileB_id = k * gridDim.x + blockIdx.x;
+        tile_nnz_acc = dA_tile_nnz_acc[tileA_id];
+
+        // Load MatA's tiled-csr data into shared memory
+        tiled_csr_offset_smem[threadIdx.x] = dA_tiled_csr_offset_gmem[tileA_id*(TILE_HEIGHT+1)+threadIdx.x];
+        if (threadIdx.x == 0)
+        {
+            tiled_csr_offset_smem[TILE_HEIGHT] = dA_tiled_csr_offset_gmem[tileA_id*(TILE_HEIGHT+1)+TILE_HEIGHT];
+        }
+
+
+        for (int i = 0; i < MAX_TILEA_NNZ/blockDim.x; i++)
+        {
+            tiled_csr_column_smem[threadIdx.x + i*blockDim.x] = dA_tiled_csr_column_gmem[tile_nnz_acc + threadIdx.x + i*blockDim.x];
+            tiled_csr_value_smem[threadIdx.x + i*blockDim.x] = dA_tiled_csr_value_gmem[tile_nnz_acc + threadIdx.x + i*blockDim.x];
+        }
+        __syncthreads();
+
+        // Load MatB's group data into shared memory
+        if (threadIdx.x < MAX_GROUP_NUM * TILE_WIDTH)
+        {
+            group[threadIdx.x/MAX_GROUP_NUM][threadIdx.x%MAX_GROUP_NUM] 
+                = dB_group_value[(MAX_GROUP_NUM * tileB_id + threadIdx.x%MAX_GROUP_NUM) * TILE_WIDTH + threadIdx.x/MAX_GROUP_NUM];
+        }
+
+        __syncthreads();
+
+        // SPLIT_K/blockDim.x = 256/32 = 8 = blockDim.y
+        rowB_ind = k * SPLIT_K + threadIdx.x;
+        entry = rowB_ind * gridDim.x + blockIdx.x;
+
+        // Load MatB's group information into shared memory
+        group_id_smem[threadIdx.x] = dB_group_id_gmem[entry];
+
+        // Load MatB's bit mask data into shared memory
+        MatB_bit_smem[threadIdx.x] = dB_bit_mask_gmem[entry];
+
+        spilled_row_hash_table_reverse_smem[threadIdx.x] 
+            = dB_spilled_row_hash_table_reverse_gmem[threadIdx.x + tileB_id * SPLIT_K];
+
+        __syncthreads();
+
+        for (int z = tiled_csr_offset_smem[threadIdx.x]; z < tiled_csr_offset_smem[threadIdx.x+1]; z++)
+        {
+            // if (z == line_csr_offset_end - line_csr_offset_start) break;
+            entry_col = tiled_csr_column_smem[z];
+            row_group_id = group_id_smem[entry_col];
+            BitMaskType MatB_bit_row = MatB_bit_smem[entry_col];
+            if (MatB_bit_row == 0) continue;
+            // printf("row_group_id: %d\n", row_group_id);
+            if (row_group_id != -1 && output_group_idx != -1)
+            {
+                for (int b = 0; b < BIT_WIDTH; b++)
+                {
+                    // tmp = (__float_as_int(tiled_csr_value_smem[z]) >> b) & 1 == 0x01;
+                    // if ((b % 2 + entry_col % 2) % 2 == 0)
+                    if ((tiled_csr_value_smem[z] >> b) & 1)
+                    {
+                        // group_indicator[output_group_idx][b][row_group_id] |= MatB_bit_row;
+                        atomicOr(&group_indicator[output_group_idx][b][row_group_id], MatB_bit_row);
+                    }
+                }
+            }
+            // else if (row_group_id == -1 && output_group_idx != -1)
+            // {
+            //     int row_in_csr = spilled_row_hash_table_reverse_smem[entry_col];
+            //     int start_offset;
+            //     if (row_in_csr == 0)
+            //     {
+            //         start_offset = 0;
+            //     }
+            //     else 
+            //     {
+            //         start_offset = dB_tile_spilled_csrRowPtr[dB_spilled_row_cnt_offset[tileB_id] + row_in_csr - 1];
+            //     }
+            //     for (int j = start_offset; j < dB_tile_spilled_csrRowPtr[dB_spilled_row_cnt_offset[tileB_id] + row_in_csr]; j++)
+            //     {
+            //         int col_ind = dB_tile_spilled_csrColInd[dB_spilled_nnz_offset[tileB_id] + j];
+            //         result[output_group_idx][1][col_ind] += tiled_csr_value_smem[z] * dB_tile_spilled_csrVal[dB_spilled_nnz_offset[tileB_id] + j];
+            //     }
+            // }
+        }
+
+        __syncthreads();
+
+        #pragma unroll
+        for (int m = 0; m < 16; m++)
+        {
+            #pragma unroll
+            for (int i = 0; i < MAX_GROUP_NUM; i++)
+            { 
+                int row = lane_id % 4 * 2 + m % 2 + m % 8 / 4 * 8;
+                // int col = lane_id / 4 + (m / 2) / 4 * 2 + (m % 2);
+                int col = lane_id / 4 + 8 * ((m/8)*2+(m%4)/2);
+                int index = (m % 8) / 4;
+                if (group_indicator[output_row_idx + index][row % 8][i] >> (31 - col) & 0x01)
+                {
+                    B_frag[warp_id].x[m] += group[col][i];
+                }
+            }
+        }
+
+        __syncthreads();
+
+    }
+
+    nvcuda::wmma::mma_sync(C_frag[warp_id], A_frag, B_frag[warp_id], C_frag[warp_id]);
+    nvcuda::wmma::store_matrix_sync(dC_group_value + bid*(OUTPUT_MAX_GROUP_NUM*4)*TILE_WIDTH + 8*32*warp_id, C_frag[warp_id], 32, wmma::mem_row_major);
+
+}
 
 #endif
