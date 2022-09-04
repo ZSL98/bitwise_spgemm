@@ -53,7 +53,13 @@ using ElemIndexTypeH = uint32_t;
 using ValueTypeBMPH = thrust::tuple<uint32_t, uint64_t>; //index in values array, bitmap
 using ValueTypeBMPH_NT = uint64_t; //bitmap
 using ValueTypeH = signed char; // the actual values of values array
-using ValueType = signed char; 
+
+// Added by Shulai
+using InitValueType = float;
+using ValueType = signed char;
+using OutputType = float;
+using BitMaskType = int;
+
 using MatrixTypeH = cusp::coo_matrix<IndexTypeH,ValueTypeBMPH,cusp::device_memory>;
 using MatrixTypeH_NT = cusp::coo_matrix<IndexTypeH,ValueTypeBMPH_NT,cusp::device_memory>;
 

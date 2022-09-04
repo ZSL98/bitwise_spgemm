@@ -15,16 +15,16 @@ using namespace nvcuda;
 #define REPETITIONS 1
 
 #define SPARSITY 99
-#define SPARSITY_A 99.7
-#define SPARSITY_B 99.7
+#define SPARSITY_A 99
+#define SPARSITY_B 99
 #define BIT_WIDTH 8
 #define MAX_GROUP_NUM 4
 #define OUTPUT_MAX_GROUP_NUM 16
 #define TILE_HEIGHT 256
 #define TILE_WIDTH 32
-#define SIZE_M 2048
-#define SIZE_K 2048
-#define SIZE_N 2048
+#define SIZE_M 4096
+#define SIZE_K 4096
+#define SIZE_N 4096
 #define SPLIT_K 256
 
 #define MAX_TILEA_NNZ 2048
