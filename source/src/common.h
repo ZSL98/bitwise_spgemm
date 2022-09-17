@@ -15,17 +15,17 @@ using namespace nvcuda;
 #define REPETITIONS 1
 
 #define SPARSITY 99
-#define SPARSITY_A 99
-#define SPARSITY_B 99
-#define BIT_WIDTH 8
-#define MAX_GROUP_NUM 4
-#define OUTPUT_MAX_GROUP_NUM 16
-#define TILE_HEIGHT 256
+#define SPARSITY_A 99.99
+#define SPARSITY_B 99.99
+#define BIT_WIDTH 32
+#define MAX_GROUP_NUM 2
+#define OUTPUT_MAX_GROUP_NUM 2
+#define TILE_HEIGHT 512
 #define TILE_WIDTH 32
-#define SIZE_M 4096
-#define SIZE_K 4096
-#define SIZE_N 4096
-#define SPLIT_K 256
+#define SIZE_M 8192
+#define SIZE_K 8192
+#define SIZE_N 8192
+#define SPLIT_K 2048
 
 #define MAX_TILEA_NNZ 2048
 #define MAX_SPILLED_ROW_CNT_C 1024
